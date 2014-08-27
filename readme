@@ -1,0 +1,512 @@
+WalkersGuide-Server
+===================
+
+Introduction
+------------
+
+WalkersGuide is a navigation aid based on OpenStreetMap data. It's designed especially but not
+exclusively for visual impaired people. It's main purpose is to calculate routes for walkers
+including public transportation. More about this project at http://walkersguide.org.
+
+The project consists of two parts:
+1. The server holds the OpenStreetMap data and calculates routes based on given start and
+destination. It also provides an interface to query nearby points of interest.
+2. The client sends start and destination points to the server. After calculation the received route
+is presented to the user.
+
+This repository holds the server application. The following section gives an overview of the
+project structure. The subsequent sections contain installation instructions and usage notes.
+
+Project structure
+-----------------
+
+The map data for the routing process comes from [OpenStreetMap](http://openstreetmap.org). A country
+or continent is downloaded and stored in a local Postgresql database. The scripts from the
+"sql_functions" and "scripts" folders help you to get a local copy of the OpenStreetMap database on
+your server. But they not only create the database but also calculate additional database tables
+like intersections, poi and a routing graph. These tables are required to perform the creation of a
+walkers route.
+
+The "src" folder contains python scripts to query data from the database and calculate the actual
+route. There is also a web server, which listens for client requests on a specific port, calls the
+route creation functions and returns the results to the client.
+
+The PublicTransportInterface folder holds a small Java program to query public transportation data
+like routes and departure timetables. The program serves as a wrapper for the Java library
+[public-transport-enabler](https://github.com/schildbach/public-transport-enabler). This library
+fetches data from the German public transportation provider "Deutsche Bahn". Therefore the public
+transportation functionality currently is limited outside of Germany.
+
+Installation
+------------
+
+This section describes the installation process of the required software. The instructions cover the
+Debian operating system.
+
+### Postgresql, Postgis and pgrouting ###
+
+The following steps describe the installation process for Debian Wheezy (stable):
+
+Add the Postgresql software repository. That's necessary cause the Debian repositories still contain
+version 1.5 of the Postgresql extension Postgis but v2.0 is needed.
+
+```
+root# echo "deb http://apt.postgresql.org/pub/repos/apt/ wheezy-pgdg main" > /etc/apt/sources.list.d/pgdg.list
+root# wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc |  apt-key add -
+root# aptitude update && aptitude upgrade
+```
+
+Install Postgresql and Postgis (an extension to handle spacial data types like points and lines):
+
+```
+root# aptitude install postgresql postgresql-contrib postgresql-9.3-postgis-2.1 postgis
+```
+
+Now we need pgrouting, an Postgresql extension which adds routing algorithms. It's not in the
+repositories, so we have to compile it.
+
+```
+root# aptitude install cmake postgresql-server-dev-all libboost-all-dev libproj-dev libgeos-dev libcgal-dev
+root# exit
+osm$ cd /tmp
+osm$ wget https://github.com/pgRouting/pgrouting/archive/v2.0.0.tar.gz
+osm$ tar xfz v2.0.0.tar.gz
+osm$ cd pgrouting-2.0.0
+osm$ cmake .
+osm$ make
+osm$ sudo make install
+```
+
+If you already use Debian Jessie (testing) the installation process is much easier cause all
+necessary packages can be found in the standard repositories now. So for Debian Jessie you have to
+install:
+
+```
+root# aptitude install postgresql-9.3 postgresql-contrib-9.3 postgresql-9.3-postgis-2.1 postgresql-9.3-pgrouting
+```
+
+### Java ###
+
+Java JDK to compile the wrapper of the public transportation library:
+
+```
+root# aptitude install openjdk-7-jdk ant
+```
+
+### Python plugins ###
+
+The WalkersGuide-Server project requires some python modules, which should be installed next:
+
+```
+root# aptitude install python-setuptools
+root# easy_install py4j requests configparser cherrypy psycopg2
+```
+
+### configure mail sending ###
+
+Some later used scripts send mails to inform the user about their status. This is done via the mail
+command of the server. If it's not already configured to send mail, it can be done the following
+way:
+
+```
+root# aptitude install mailutils msmtp msmtp-mta
+```
+
+The package "mailutils" provides the "mail" command. The mail is send via msmtp and msmtp-mta makes
+msmtp the default mail transfer agent. Now configure msmtp by creating the file .msmtprc in the
+users home directory with the following content:
+
+```
+defaults
+tls on
+tls_starttls on
+auth on
+logfile ~/.msmtp.log
+syslog off
+# smtp of your mail server
+account my_account
+    host smtp.example.org
+    port 587
+    from sender@example.org
+    tls_certcheck off
+    user my_user_name
+    password my_password
+account default my_account
+```
+
+Make the file only readable for the current user:
+
+```
+$ chmod 600 ~/.msmtprc
+```
+
+Now you can send a mail with the following command:
+
+```
+$ echo "my message body" | mail -s "my subject" recipient@example.org
+```
+
+### Other required programs ###
+
+Create a folder for the project, for example:
+
+```
+mkdir /data/routing
+cd /data/routing
+```
+
+Then create a tools folder for some additional helper programs:
+
+```
+mkdir tools
+cd tools
+```
+
+Download Osmosis, a program to extract parts of a OpenStreetMap database:
+
+```
+wget http://bretth.dev.openstreetmap.org/osmosis-build/osmosis-latest.zip
+unzip osmosis-latest.zip -d osmosis
+rm osmosis-latest.zip
+```
+
+OSMFilter and OSMConvert:
+
+```
+wget -O - http://m.m.i24.cc/osmfilter.c |cc -x c - -O3 -o osmfilter
+wget -O - http://m.m.i24.cc/osmconvert.c | cc -x c - -lz -O3 -o osmconvert
+```
+
+Osm2po creates a database table which represents the routing graph of all streets and ways. This
+graph is needed by pgrouting to calculate a route from start to the point of destination. The tool
+must be downloaded from http://www.osm2po.de/ and extracted to the folder named "osm2po".
+
+Then clone this repository:
+
+```
+cd ..
+git clone https://github.com/scheibler/WalkersGuide-Server.git
+```
+
+If you plan to run multiple server instances for example to offer maps of several countries or
+continents, you also can clone in another folder:
+
+```
+cd ..
+git clone https://github.com/scheibler/WalkersGuide-Server.git WalkersGuide-Europe
+```
+
+After this, the installation process is finished. Next follows the configuration.
+
+
+Initial Configuration
+---------------------
+
+The first part of this section covers the configuration of the Postgresql server. Later on follows
+the configuration of the WalkersGuide-Server package.
+
+### Postgresql ###
+
+Create a new database user first and assign a password. It must be a super user:
+
+```
+root# su postgres
+postgres$ createuser -P -S wgs_writer
+postgres$ exit
+```
+
+The option for superuser also could be "-s".
+
+After that, change database access permissions in the file
+
+```
+root# sudo vim /etc/postgresql/9.3/main/pg_hba.conf
+```
+
+to the following ones:
+
+```
+# postgres system user can log into all databases
+local   all             postgres                                peer
+# disable peer login
+# that means, that the current console user can't access databases anymore
+#host    all             all             127.0.0.1/32            md5
+#host    all             all             ::1/128                 md5
+# give the above created database user permission, to access the WalkersGuide osm databases
+host    all             wgs_writer             127.0.0.1/32            md5
+```
+
+Now you have to change some settings in the Postgresql main config. The defaults are fairly
+conservative and often don't fit the needs for a large db. The settings hardly depend on the
+hardware of your server. These are mine for a server with a Core I7 CPU, 32 GB Ram and 3 TB HDD:
+
+```
+root# vim /etc/postgresql/9.3/main/postgresql.conf
+[...]
+#------------------------------------------------------------------------------
+# CUSTOMIZED OPTIONS
+#------------------------------------------------------------------------------
+default_statistics_target = 500   # suggested 50
+maintenance_work_mem = 1GB # pgtune wizard 2014-07-01
+constraint_exclusion = on # pgtune wizard 2014-07-01
+checkpoint_completion_target = 0.9 # pgtune wizard 2014-07-01
+effective_cache_size = 22GB # pgtune wizard 2014-07-01
+work_mem = 512MB   # suggested 192MB
+wal_buffers = 16MB   # suggested 8MB
+checkpoint_segments = 64   # suggested 16
+shared_buffers = 7680MB # pgtune wizard 2014-07-01
+max_connections = 20 # pgtune wizard 2014-07-01
+temp_buffers = 32MB
+random_page_cost = 2.0
+
+# encoding and localisation
+datestyle = 'iso, dmy'
+lc_messages = 'de_DE.UTF-8'
+lc_monetary = 'de_DE.UTF-8'
+lc_numeric = 'de_DE.UTF-8'
+lc_time = 'de_DE.UTF-8'
+default_text_search_config = 'pg_catalog.german'
+```
+
+The suggested values come from pgtune, a Postgresql settings parameters optimizer. You can try it
+out yourself easily:
+
+```
+root# aptitude install pgtune
+root# pgtune -i /etc/postgresql/9.3/main/postgresql.conf -o /tmp/postgresql.conf.tuned
+```
+
+Lastly restart Postgresql:
+
+```
+root# service postgresql restart
+```
+
+### WalkersGuide-Server config ###
+
+First, enter the project directory and create some folders in it:
+
+```
+cd WalkersGuide-Server
+mkdir logs
+mkdir logs/client
+mkdir logs/server
+mkdir maps
+mkdir tmp
+```
+
+Then rename the configuration file in the scripts folder and adapt it's settings to your needs.
+
+```
+mv scripts/configuration.sh.example scripts/configuration.sh
+```
+
+Afterwards do the same with the config file in the src folder.
+
+```
+mv src/configuration.rc.example src/configuration.rc
+```
+
+Lastly you have to adapt the settings of the osm2po program. To do this, open it's config file
+
+```
+vim /data/routing/tools/osm2po/osm2po.config
+```
+
+and change the way type values to fit walkers needs:
+
+```
+[...]
+######################################################################
+# DEFAULT TAG RESOLVER
+######################################################################
+wtr.flagList = foot, gradeoneortwo, car, bike, rail, ferry
+wtr.finalMask = foot
+wtr.shuttleTrainMask = rail|car
+# Main-Tag definitions. Params 1-4:
+# 1) concurrent order
+# 2) class (1-127)
+# 3) default speed in kmh == I don't use the km/h option but use the value to define the
+#     accessibility of the way type from 1: very good to 5: very bad (10 is not passably)
+# 4) allowed transportation type (optional) - since v4.5.30
+# road types and their weights
+# Bundesstraße
+wtr.tag.highway.primary =        1, 1, 5,  foot
+# Zubringer auf Bundesstraße
+wtr.tag.highway.primary_link =   1, 2, 5,  foot
+# gut ausgebaute Landstraße mit Mittelstreifen
+wtr.tag.highway.secondary =      1, 3, 3,  foot
+# Landstraßenzubringer
+wtr.tag.highway.secondary_link = 1, 4, 3,  foot
+# Nebenstraße
+wtr.tag.highway.tertiary =       1, 5, 1,  foot
+# noch kleinere Nebenstraße
+wtr.tag.highway.unclassified =   1, 6, 1, foot
+# Straße in Wohngebieten
+wtr.tag.highway.residential =    1, 7, 1,  foot
+# alle unbekannten straßen
+wtr.tag.highway.road =           1, 8, 4,  foot
+# Privatstraßen
+wtr.tag.highway.service =       1, 9, 4,   foot
+# Spiel / Wohnstraße
+wtr.tag.highway.living_street = 1, 10, 2,   foot
+# Fußgängerzone
+wtr.tag.highway.pedestrian =    1, 11, 3,  foot
+# Feld - oder Waldweg
+wtr.tag.highway.track =         1, 12, 5, foot
+wtr.allow.tracktype.grade[1|2] = gradeoneortwo
+# Pfad, Wanderweg
+wtr.tag.highway.path =          1, 13, 5, foot
+# Fußweg
+wtr.tag.highway.footway =       1, 14, 3,   foot
+# Treppen
+wtr.tag.highway.steps =         1, 15, 4,   foot
+# fahrradwege
+wtr.tag.highway.cycleway =      1, 16, 5,  foot
+# zug
+wtr.tag.railway.rail =           1, 17, 10,  foot
+# straßenbahn
+wtr.tag.railway.tram =           1, 18, 10,  foot
+# not used
+# autobahn
+# wtr.tag.highway.motorway =       1, 11, 120, car
+# autobahn zubringer
+# wtr.tag.highway.motorway_link =  1, 12, 30,  car
+# autobahnähnliche Straße
+# wtr.tag.highway.trunk =          1, 13, 90,  car
+# Zubringer auf autobahnähnliche Straße
+# wtr.tag.highway.trunk_link =     1, 14, 30,  car
+# wtr.tag.route.ferry =            2, 01, 10,  ferry
+# wtr.tag.route.shuttle_train =    2, 02, 50,  rail|car
+```
+
+
+Create new database
+-------------------
+
+Now it's time to create the OpenStreetMap database. That's a two step process:
+1. Import a country or continent into a newly created Postgresql database.
+2. Calculate additional data, which is required for routing.
+
+First, change into the scripts folder:
+
+```
+cd scripts
+```
+
+### Import OSM database ###
+
+You set the map download URL in the configuration.sh file. Default is the map of Europe, downloaded
+from http://geofabrik.de. After setting all necessary configuration options, start the import process with:
+
+```
+./osm_database_wrapper.sh create_raw
+```
+
+The wrapper script starts "create_raw_database.sh" and creates a so called raw database of the
+chosen map area. For big areas like Europe this process can last one or two weeks. After the import
+is finished, the newly created database "osm_raw_europe" holds an exact copy of the OpenStreetMap
+map.
+
+To speed up the import process, it's recommended to turn off auto vacuum in the main config file of
+the Postgresql database server:
+
+```
+root# vim /etc/postgresql/9.3/main/postgresql.conf
+[...]
+# settings for large data import
+autovacuum = off
+fsync = off
+```
+
+Restart Postgresql after editing the config file and don't forget, to turn on auto vacuum again,
+after the import is done.
+
+The OSM data underlies constant changes. The Geofabrik server offers daily differential update files
+to keep the local database up to date. Call the wrapper script with the "update_raw" parameter to
+start the update process:
+
+```
+./osm_database_wrapper.sh update_raw
+```
+
+For automatic updates it's recommended to create a Cronjob, which calls the script every night:
+
+```
+0  2  *  *  *  /data/routing/WalkersGuide-Server/scripts/osm_database_wrapper.sh update_raw
+```
+
+### Create a productive database ###
+
+The next step is to create a second database for productive usage. This includes:
+* intersection table with all intersections and their appropriate streets
+* tables for poi, stations, buildings, their entrances and traffic signals
+* a routing table (eu_2po4pgr)
+
+Start the creation process with the following command:
+
+```
+./osm_database_wrapper.sh create_productive
+```
+
+The wrapper starts the script "create_productive_database.sh". This script makes a copy of the raw
+database and creates the tables mentioned above. During this process, updating of the raw database
+is prohibit.
+
+This procedure is recommended for smaller databases but for bigger ones like Europe, the creation
+lasts at least two or three days. If the server must process routing queries at the same time, the
+query time will be much higher then normal. To prevent the slowdown for the user, it's possible to
+calculate the productive database at a second server and only transfer it, when done
+
+To accomplish this, you need two servers with the raw database and all other stuff installed. The raw
+databases must be at the same state and from the calculating server you need non interactive ssh access
+to the remote server, which processes the user queries. If all is installed at both servers, you
+start the creation process of the productive database at the calculation server with this command:
+
+```
+./osm_database_wrapper.sh create_productive_and_transfer
+```
+
+The script checks the ssh connection to the remote server, compares the map state numbers and then
+also runs the "create_productive_database.sh" script. After this is done, it extracts the calculated
+tables, packs them into a SQL dump file and transfers the file to the remote server. Lastly it runs
+the script "create_productive_database_from_dumps.sh" at the remote server. This script copies the
+raw database and imports the dumped tables. So the most work is done at the calculation server. The
+remote server only must handle the import which only lasts a few hours. So it can be done at night
+and has much less impact at the routing service.
+
+
+Usage
+-----
+
+When installation and configuration is finished and a productive database is created, you can start
+the web server with this command:
+
+```
+/data/routing/WalkersGuide-Server/src/webserver.py
+```
+
+Make sure, that the given port is reachable from outside. Then activate the public transportation
+wrapper:
+
+```
+java -jar /data/routing/PublicTransportInterface/dist/PublicTransportInterface.jar [port]
+```
+
+If you changed the gateway_port in the file src/configuration.rc you have to specify it at the
+program call. Otherwise the public transport interface listens at the standard port 25333. This port
+must not be accessible from outside.
+
+Now you can check the web server by opening the following URL at a client, for example under Linux:
+
+```
+wget -O - http://hostname:port/get_version | gunzip
+```
+
+The server's answer is gzip compressed, so it's necessary to unpack it, before you can view the resulting
+data. Answer should look like:
+
+```
+{"interface": 0.1, "warning": "", "map_version": "2014-07-18", "server": 0.1, "error": ""}
+```
+

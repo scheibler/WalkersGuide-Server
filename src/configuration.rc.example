@@ -1,0 +1,34 @@
+[table_names]
+routing_table = eu_2po_4pgr
+intersection_table = intersections
+intersection_data_table = intersection_data
+
+[database_settings]
+db_name = osm_europe
+db_host_name = 127.0.0.1
+db_port = 5432
+db_user = wgs_writer
+db_password = password
+
+[webserver_settings]
+host = example.org
+port = 23456
+thread_pool = 10
+
+[javagateway_settings]
+gateway_port = 25333
+
+[folder]
+logs_folder = /data/routing/WalkersGuide-Server/logs
+maps_folder = /data/routing/WalkersGuide-Server/maps
+
+[email]
+sender_mail_server_address = smtp.example.org
+sender_mail_server_port = 587
+sender_mail_server_login = email@example.org
+sender_mail_server_password = password
+recipient_address = recipient@example.org
+
+[user_language_settings]
+default_language = en
+
