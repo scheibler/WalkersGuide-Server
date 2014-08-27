@@ -289,8 +289,6 @@ First, enter the project directory and create some folders in it:
 ```
 cd WalkersGuide-Server
 mkdir logs
-mkdir logs/client
-mkdir logs/server
 mkdir maps
 mkdir tmp
 ```

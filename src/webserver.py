@@ -2,8 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import google_maps, geometry, helper
-import os.path
-import cherrypy, json, math, time
+import os, cherrypy, json, math, time
 from py4j.java_gateway import JavaGateway, GatewayClient
 from poi import POI
 from route_transport_creator import RouteTransportCreator
@@ -508,6 +507,8 @@ class RoutingWebService():
         # save bug report
         try:
             bug_report_folder = os.path.join( Config().get_param("logs_folder"), "client")
+            if os.path.exists(bug_report_folder) == False:
+                os.makedirs(bug_report_folder)
             file = open(os.path.join(bug_report_folder, input['file_name'].split("/")[-1]), 'w')
             file.write(input['bug_report'])
             file.close()
