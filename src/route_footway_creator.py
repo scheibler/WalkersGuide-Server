@@ -120,7 +120,7 @@ class RouteFootwayCreator:
         # route calculation
         print "start_vertex = %d, dest_vertex = %d" % (start_vertex, dest_vertex)
         t2 = time.time()
-        for number_of_lines in [2500, 5000, 10000, 25000, 50000, 100000, 250000]:
+        for number_of_lines in [5000, 15000, 30000, 50000, 100000, 250000]:
             # algorithms: pgr_dijkstra or pgr_astar
             print "numlines = %d" % number_of_lines
             self.route_logger.append_to_log("numlines = %d" % number_of_lines)
