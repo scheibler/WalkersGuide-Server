@@ -34,27 +34,27 @@ if [[ $? != 0 ]]; then
     exit 52
 fi
 
-## now, raw osm maps of local and remote server are at same version
-## next step is to create necessary tables like poi and intersections from the raw database
-## this process runs locally
-#"$folder_name/create_productive_database.sh"
-#rc=$?
-#if [[ $rc != 0 ]]; then
-#    $remote_full_ssh_command $remote_script_path/osm_database_wrapper.sh unlock
-#    echo "Error during productive database creation"
-#    exit $rc
-#fi
-#
-## create dumps of new database tables
-#echo "create dumps of new database tables"
-#tables="-t entrances -t "$db_prefix"_2po_4pgr -t intersections -t intersection_data \
-#-t outer_buildings -t poi -t stations -t traffic_signals -t transport_lines -t way_class_weights"
-#pg_dump -h $server_address -U $user_name -b -C -Fc -Z9 $tables $db_active_name -f $dumped_tables_file
-#if [[ $? != 0 ]]; then
-#    $remote_full_ssh_command $remote_script_path/osm_database_wrapper.sh unlock
-#    echo "Error during database dumping"
-#    exit 53
-#fi
+# now, raw osm maps of local and remote server are at same version
+# next step is to create necessary tables like poi and intersections from the raw database
+# this process runs locally
+"$folder_name/create_productive_database.sh"
+rc=$?
+if [[ $rc != 0 ]]; then
+    $remote_full_ssh_command $remote_script_path/osm_database_wrapper.sh unlock
+    echo "Error during productive database creation"
+    exit $rc
+fi
+
+# create dumps of new database tables
+echo "create dumps of new database tables"
+tables="-t entrances -t "$db_prefix"_2po_4pgr -t intersections -t intersection_data \
+-t outer_buildings -t poi -t stations -t traffic_signals -t transport_lines -t way_class_weights"
+pg_dump -h $server_address -U $user_name -b -C -Fc -Z9 $tables $db_active_name -f $dumped_tables_file
+if [[ $? != 0 ]]; then
+    $remote_full_ssh_command $remote_script_path/osm_database_wrapper.sh unlock
+    echo "Error during database dumping"
+    exit 53
+fi
 
 # transfer to remote server via rsync
 echo "transfer to remote server via rsync"
