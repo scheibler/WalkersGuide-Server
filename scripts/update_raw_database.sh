@@ -25,7 +25,7 @@ while (( local_map_version < online_map_version )); do
         echo "Error during update process"
         exit 12
     fi
-    if (( counter > number_of_map_updates )); then
+    if (( counter >= number_of_map_updates )); then
         echo "Max number of update cycles reached. Counter = $counter"
         exit 12
     fi
