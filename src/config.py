@@ -5,7 +5,7 @@
 # http://code.activestate.com/recipes/52558/#as_content
 
 # config parser
-import configparser, os, sys
+import configparser, os, sys, time
 
 class Config:
     """ A python singleton """
@@ -13,8 +13,7 @@ class Config:
     class __impl:
         """ Implementation of the singleton interface """
         def __init__(self):
-            self.session_ids = []
-            self.session_ids_to_remove = []
+            self.session_ids = {}
             self.config = configparser.ConfigParser()
             self.config.DEFAULT_TABLENAMES = {
                     'routing_table' : 'eu_2po_4pgr',
@@ -124,25 +123,30 @@ class Config:
 
         # session id management functions
         def add_session_id(self, id):
-            self.session_ids.append(id)
+            self.session_ids[id] = 0
 
         def query_removement_of_session_id(self, id):
-            self.session_ids_to_remove.append(id)
+            if self.session_ids.has_key(id):
+                if self.session_ids[id] == 0:
+                    self.session_ids[id] = int(time.time())
+                elif (int(time.time()) - self.session_ids[id]) >= 60:
+                    self.confirm_removement_of_session_id(id)
 
         def confirm_removement_of_session_id(self, id):
-            if self.session_ids_to_remove.__contains__(id):
-                self.session_ids_to_remove.remove(id)
-            if self.session_ids.__contains__(id):
-                self.session_ids.remove(id)
+            if self.session_ids.has_key(id):
+                self.session_ids.__delitem__(id)
 
         def has_session_id(self, id):
-            return self.session_ids.__contains__(id)
+            return self.session_ids.has_key(id)
 
         def has_session_id_to_remove(self, id):
-            return self.session_ids_to_remove.__contains__(id)
+            if self.session_ids.has_key(id):
+                if self.session_ids[id] > 0:
+                    return True
+            return False
 
         def number_of_session_ids(self):
-            return self.session_ids.__len__()
+            return self.session_ids.keys().__len__()
 
     # storage for the instance reference
     __instance = None

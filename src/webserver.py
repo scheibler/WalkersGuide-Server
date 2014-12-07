@@ -87,7 +87,7 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
             return helper.zip_data(return_tuple)
         session_id = options['session_id']
-        # try to cancel prior request
+        # try to cancel prior request, if necessary
         if Config().has_session_id(session_id):
             Config().query_removement_of_session_id(session_id)
             check_counter = 0
@@ -124,6 +124,18 @@ class RoutingWebService():
             else:
                 return_tuple['route'].append(source_route[i])
                 return_tuple['route'].append(source_route[i+1])
+        # check for missing turn values at intersections
+        # for example this can happen, if an intersection is a intermediate destination of a source route
+        for i in range(2, return_tuple['route'].__len__()-2, 2):
+            if return_tuple['route'][i]['type'] == "intersection" \
+                    and return_tuple['route'][i].has_key("turn") == False \
+                    and return_tuple['route'][i-1].has_key("bearing") == True \
+                    and return_tuple['route'][i+1].has_key("bearing") == True:
+                # get turn between last and next segment in degree
+                turn = return_tuple['route'][i+1]['bearing'] - return_tuple['route'][i-1]['bearing']
+                if turn < 0:
+                    turn += 360
+                return_tuple['route'][i]['turn'] = turn
         return_tuple['description'] = rfc.get_route_description( return_tuple['route'] )
         route_logger.append_to_log("\n----- result -----\n")
         route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") + "\n----- end of route -----\n")

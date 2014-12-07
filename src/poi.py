@@ -152,15 +152,16 @@ class POI:
                         ORDER BY geom <-> 'POINT(%f %f)'::geometry \
                         LIMIT %d \
                     ) \
-                    SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
+                    SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
                         number_of_entrances, number_of_lines from nearest_poi where %s" \
                     % (lon, lat, smallest_limit, where_clause))
             t2 = time.time()
             for row in result:
                 station_id = int(row['id'])
+                osm_id = int(row['osm_id'])
                 station_tags = self.parse_hstore_column(row['tags'])
                 outer_building_id = int(row['outer_building_id'])
-                station = self.create_station(station_id, row['lat'], row['lon'], station_tags, outer_building_id,
+                station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
                 poi_list = self.insert_into_poi_list(poi_list, station, lat, lon)
                 # prevent accidental queries with more than 1000 results
@@ -207,15 +208,16 @@ class POI:
                         ORDER BY geom <-> 'POINT(%f %f)'::geometry \
                         LIMIT %d \
                     ) \
-                    SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
+                    SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
                         number_of_entrances from nearest_poi where %s" \
                     % (lon, lat, smallest_limit, where_clause))
             t2 = time.time()
             for row in result:
                 poi_id = int(row['id'])
+                osm_id = int(row['osm_id'])
                 poi_tags = self.parse_hstore_column(row['tags'])
                 outer_building_id = int(row['outer_building_id'])
-                poi = self.create_poi(poi_id, row['lat'], row['lon'], poi_tags, outer_building_id, row['number_of_entrances'])
+                poi = self.create_poi(poi_id, osm_id, row['lat'], row['lon'], poi_tags, outer_building_id, row['number_of_entrances'])
                 poi_list = self.insert_into_poi_list(poi_list, poi, lat, lon)
                 # prevent accidental queries with more than 1000 results
                 if poi_list.__len__() > 1000:
@@ -265,7 +267,7 @@ class POI:
                     % (lon, lat, smallest_limit, where_clause))
             t2 = time.time()
             for row in result:
-                signal = self.create_poi(int(row['id']), row['lat'], row['lon'],
+                signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), 0, 0)
                 signal['name'] = self.translator.translate("highway", "traffic_signals")
                 if row['crossing_street_name'] != "":
@@ -423,7 +425,7 @@ class POI:
             result = DBControl().fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
                     from traffic_signals where intersection_id = %d" % osm_id)
             for row in result:
-                signal = self.create_poi(0, row['lat'], row['lon'],
+                signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), 0, 0)
                 signal['name'] = "%s (%s)" % (self.translator.translate("highway", "traffic_signals"),
                         row['crossing_street_name'])
@@ -471,25 +473,26 @@ class POI:
 
     def create_poi_by_id(self, poi_id):
         try:
-            result = DBControl().fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags, \
+            result = DBControl().fetch_data("SELECT osm_id, ST_X(geom) as x, ST_Y(geom) as y, tags, \
                     outer_building_id, number_of_entrances \
                     from poi where id = %d" % poi_id)[0]
         except IndexError as e:
             return {}
         poi_id = int(poi_id)
+        osm_id = int(result['osm_id'])
         lat = result['y']
         lon = result['x']
         tags = self.parse_hstore_column(result['tags'])
         outer_building_id = int(result['outer_building_id'])
         number_of_entrances = result['number_of_entrances']
-        return self.create_poi(poi_id, lat, lon, tags, outer_building_id, number_of_entrances)
+        return self.create_poi(poi_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances)
 
-    def create_poi(self, poi_id, lat, lon, tags, outer_building_id, number_of_entrances):
+    def create_poi(self, poi_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances):
         poi = {}
         if type(poi_id) is not int or type(lat) is not float or type(lon) is not float \
                 or type(tags) is not dict or type(outer_building_id) is not int or type(number_of_entrances) is not int:
             return poi
-        poi = self.create_way_point(0, lat, lon, tags)
+        poi = self.create_way_point(osm_id, lat, lon, tags)
         if poi == {}:
             return poi
 
@@ -594,7 +597,7 @@ class POI:
                 lat = result['y']
                 lon = result['x']
                 tags = self.parse_hstore_column(result['tags'])
-                poi['is_inside'] = self.create_poi(0, lat, lon, tags, 0, 0)
+                poi['is_inside'] = self.create_poi(0, 0, lat, lon, tags, 0, 0)
             except IndexError as e:
                 poi['is_inside'] = {}
 
@@ -615,25 +618,26 @@ class POI:
 
     def create_station_by_id(self, station_id):
         try:
-            result = DBControl().fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags, \
+            result = DBControl().fetch_data("SELECT osm_id, ST_X(geom) as x, ST_Y(geom) as y, tags, \
                     outer_building_id, number_of_entrances, number_of_lines \
                     from stations where id = %d" % station_id)[0]
         except IndexError as e:
             return {}
         station_id = int(station_id)
+        osm_id = int(result['osm_id'])
         lat = result['y']
         lon = result['x']
         tags = self.parse_hstore_column(result['tags'])
         outer_building_id = int(result['outer_building_id'])
         number_of_entrances = result['number_of_entrances']
         number_of_lines = result['number_of_lines']
-        return self.create_station(station_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines)
+        return self.create_station(station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines)
 
-    def create_station(self, station_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines):
+    def create_station(self, station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines):
         station = {}
         if type(station_id) is not int or type(lat) is not float or type(lon) is not float or type(tags) is not dict or type(outer_building_id) is not int or type(number_of_entrances) is not int or type(number_of_lines) is not int:
             return poi
-        station = self.create_poi(station_id, lat, lon, tags, outer_building_id, number_of_entrances)
+        station = self.create_poi(station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances)
         if station == {}:
             return station
     
@@ -761,7 +765,7 @@ class POI:
                         "tags->'amenity' = " \
                             "ANY('{\"crypt\", \"place_of_worship\"}') or " \
                         "tags->'tourism' != '' or " \
-                        "tags->'natural' != '' or " \
+                        "tags->'natural' = 'water' or " \
                         "tags->'historic' != ''" \
                         ")"
             if t == "shop":

@@ -1,0 +1,7 @@
+SRC: Routing server
+v0.1, 01.09.2014::
+    - Initial release
+v0.1.1, 07.12.2014:
+    - restricted length of log file name
+    - Added OSM Node ID's to POI objects
+

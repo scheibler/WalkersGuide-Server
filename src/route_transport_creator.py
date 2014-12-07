@@ -343,7 +343,7 @@ class RouteTransportCreator:
                                             (last_arrival['name'], departure['name'], self.costs['change_2']))
                             else:
                                 # other station
-                                placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+                                placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                                 placeholder_segment['sub_type'] = "footway_place_holder"
                                 if time_for_change < self.long_change_interval:
                                     cost += self.costs['change_not_enough_time']
@@ -369,7 +369,7 @@ class RouteTransportCreator:
                                             (last_arrival['name'], departure['name'], self.costs['change_3']))
                             else:
                                 # other station
-                                placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+                                placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                                 placeholder_segment['sub_type'] = "footway_place_holder"
                                 if time_for_change < self.long_change_interval:
                                     cost += self.costs['change_not_enough_time']
@@ -383,7 +383,7 @@ class RouteTransportCreator:
                     # tc1-tc2
                     elif last_arrival['transportation_class'] == 1 and departure['transportation_class'] == 2:
                         # station has entrances
-                        placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+                        placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                         placeholder_segment['sub_type'] = "footway_place_holder"
                         if departure['accuracy'] == True:
                             if time_for_change < self.short_change_interval:
@@ -407,7 +407,7 @@ class RouteTransportCreator:
                     # tc2-tc1
                     elif last_arrival['transportation_class'] == 2 and departure['transportation_class'] == 1:
                         # exact position of station known
-                        placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+                        placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                         placeholder_segment['sub_type'] = "footway_place_holder"
                         if departure['accuracy'] == True:
                             if time_for_change < self.short_change_interval:
@@ -478,7 +478,7 @@ class RouteTransportCreator:
                     geometry.convert_coordinate_to_float(legs[-1].departure.lat),
                     geometry.convert_coordinate_to_float(legs[-1].departure.lon),
                     dest_point['lat'], dest_point['lon'] )
-            placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+            placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
             placeholder_segment['sub_type'] = "footway_place_holder"
             route.append(placeholder_segment)
             route.append(dest_point)
@@ -493,7 +493,7 @@ class RouteTransportCreator:
                     dest_point['lat'], dest_point['lon'] )
             if placeholder_segment['distance'] > 20:
                 walking_distance += placeholder_segment['distance']
-                placeholder_segment['name'] = self.translator.translate("highway", "footway_place_holder")
+                placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                 placeholder_segment['sub_type'] = "footway_place_holder"
                 route.append(placeholder_segment)
                 route.append(dest_point)

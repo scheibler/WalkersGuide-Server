@@ -13,6 +13,10 @@ class RouteLogger:
             os.makedirs(log_folder)
         self.file_name = os.path.join( log_folder, "%d.%02d.%02d_%02d-%02d-%02d--%s.log" % (date.year, date.month,
                 date.day, date.hour, date.minute, date.second, file_name))
+        # cut file name if it's too long
+        if self.file_name.__len__() >= os.pathconf(log_folder, 'PC_NAME_MAX'):
+            self.file_name = "%s.log" \
+                    % self.file_name[:os.pathconf(log_folder, 'PC_NAME_MAX')-10]
         self.append_to_log(file_name.replace(".", " ").replace("-", "  --  "))
 
     def append_to_log(self, data):
