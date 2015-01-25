@@ -7,7 +7,7 @@ from route_logger import RouteLogger
 from translator import Translator
 from config import Config
 import geometry
-import time, json, operator
+import time, json, operator, math
 
 class RouteTransportCreator:
 
@@ -18,6 +18,8 @@ class RouteTransportCreator:
         self.s_finder = StationFinder(translator_object)
         self.gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
         self.main_point = self.gateway.entry_point
+        self.transport_route_list = RouteTransportCreator.TransportRouteList()
+        self.fixed_delay = 15   # in minutes
         self.costs = {
                 'change_1': 2,
                 'change_2': 4,
@@ -30,102 +32,123 @@ class RouteTransportCreator:
         self.short_change_interval = 5
         self.long_change_interval = 9
 
-    def find_transport_route( self, start_point, dest_point, number_of_possible_routes):
+    def find_best_transport_routes( self, start_point, dest_point, number_of_possible_routes):
         print "transport route creator"
-        # find start and destination stations
         t1 = time.time()
-        start_stations = [ self.main_point.createAddressObject(
-                geometry.convert_coordinate_to_int(start_point['lat']),
-                geometry.convert_coordinate_to_int(start_point['lon']) ) ]
+        # find start and destination stations
+        start_stations = []
+        if start_point['type'] != "station":
+            start_stations.append(self.main_point.createAddressObject(
+                    geometry.convert_coordinate_to_int(start_point['lat']),
+                    geometry.convert_coordinate_to_int(start_point['lon']) ))
         for station in self.main_point.getNearestStations(
                 geometry.convert_coordinate_to_int(start_point['lat']),
                 geometry.convert_coordinate_to_int(start_point['lon'])).stations:
             start_stations.append(station)
-            if start_stations.__len__() >= 5:
+            if start_stations.__len__() >= 4:
                 break
-        dest_stations = [ self.main_point.createAddressObject(
-                geometry.convert_coordinate_to_int(dest_point['lat']),
-                geometry.convert_coordinate_to_int(dest_point['lon']) ) ]
+        dest_stations = []
+        if dest_point['type'] != "station":
+            dest_stations.append(self.main_point.createAddressObject(
+                    geometry.convert_coordinate_to_int(dest_point['lat']),
+                    geometry.convert_coordinate_to_int(dest_point['lon']) ))
         for station in self.main_point.getNearestStations(
                 geometry.convert_coordinate_to_int(dest_point['lat']),
                 geometry.convert_coordinate_to_int(dest_point['lon'])).stations:
             dest_stations.append(station)
-            if dest_stations.__len__() >= 5:
+            if dest_stations.__len__() >= 4:
                 break
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
             Config().confirm_removement_of_session_id(self.session_id)
             return
+        t2 = time.time()
 
         # calculate best connections
-        transport_route_list = []
-        location_type = self.gateway.jvm.de.schildbach.pte.dto.LocationType
-        t2 = time.time()
-        begin = time.time()
-        for start in start_stations:
-            for dest in dest_stations:
-                log_string = ""
-                if start.name == None:
-                    log_string += "von %s " % start_point['name']
-                else:
-                    log_string += "Von haltestelle %s " % start.name.encode("utf-8")
-                if dest.name == None:
-                    log_string += "nach %s" % dest_point['name']
-                else:
-                    log_string += "nach haltestelle %s" % dest.name.encode("utf-8")
-                self.route_logger.append_to_log(log_string)
-
-                # set the start delay in minutes
-                delay = 15
-                distance_from_start_to_departure = geometry.distance_between_two_points( start_point['lat'], start_point['lon'],
-                        geometry.convert_coordinate_to_float(start.lat), geometry.convert_coordinate_to_float(start.lon) )
-                delay += distance_from_start_to_departure / 50
-
-                # question trips from bahn.de
-                response = self.main_point.calculateConnection(start, dest, delay)
-                if response == None:
-                    continue
-                trips = response.trips
-                if trips == None:
-                    continue
-                index = 1
-                for trip in trips:
-                    if trip.legs.__len__() == 0:
-                        continue
-                    self.route_logger.append_to_log("Connection %d / 4" % index)
-                    cstart = time.time()
-                    add_to_list = True
-                    transport_route_object = self.create_transport_route_object(start_point, trip.legs, dest_point)
-                    for object in transport_route_list:
-                        if transport_route_object.cost < 0:
-                            add_to_list = False
-                            break
-                        if object.description == transport_route_object.description:
-                            add_to_list = False
-                            break
-                    if add_to_list == True:
-                        transport_route_list.append(transport_route_object)
-                    cend = time.time()
-                    self.route_logger.append_to_log("== %d cost; Connection parsing time: %.2f\n"
-                            % (transport_route_list[-1].cost, (cend-cstart)) )
-                    index += 1
+        max_station_list_length = start_stations.__len__()
+        if max_station_list_length < dest_stations.__len__():
+            max_station_list_length = dest_stations.__len__()
+        for x in range(0, max_station_list_length):
+            for y in range(x, max_station_list_length):
+                if x < start_stations.__len__() and y < dest_stations.__len__():
+                    distance = geometry.distance_between_two_points(
+                            geometry.convert_coordinate_to_float(start_stations[x].lat),
+                            geometry.convert_coordinate_to_float(start_stations[x].lon),
+                            geometry.convert_coordinate_to_float(dest_stations[y].lat),
+                            geometry.convert_coordinate_to_float(dest_stations[y].lon) )
+                    if distance > 200:
+                        self.query_trips(start_point, dest_point,
+                                start_stations[x], dest_stations[y])
+                    print "%d  %d;    dist = %d;   routes: %d" % (x, y, distance, self.transport_route_list.get_size())
+                if y < start_stations.__len__() and x < dest_stations.__len__() and x != y:
+                    distance = geometry.distance_between_two_points(
+                            geometry.convert_coordinate_to_float(start_stations[y].lat),
+                            geometry.convert_coordinate_to_float(start_stations[y].lon),
+                            geometry.convert_coordinate_to_float(dest_stations[x].lat),
+                            geometry.convert_coordinate_to_float(dest_stations[x].lon) )
+                    if distance > 200:
+                        self.query_trips(start_point, dest_point,
+                                start_stations[y], dest_stations[x])
+                    print "%d  %d;    dist = %d;   routes: %d" % (y, x, distance, self.transport_route_list.get_size())
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     Config().confirm_removement_of_session_id(self.session_id)
                     return
-
-        end = time.time()
+            if self.transport_route_list.enough_routes(number_of_possible_routes):
+                break
         t3 = time.time()
+
         # print route
-        transport_route_list.sort(key = operator.attrgetter('cost'))
-        self.route_logger.append_to_log("Winner = %d points, parsing time: %.2f" % (transport_route_list[0].cost, (end-begin)))
-        self.route_logger.append_to_log( json.dumps( transport_route_list[0].route, indent=4, encoding="utf-8") )
-        t4 = time.time()
-        print "transport1: %.2f" % (t2-t1)
-        print "transport2: %.2f" % (t3-t2)
-        print "transport3: %.2f" % (t4-t3)
-        print "transport gesamt: %.2f" % (t4-t1)
-        return transport_route_list[0:number_of_possible_routes]
+        self.transport_route_list.clean_route_dict()
+        object = self.transport_route_list.get_best_route()
+        if object != None:
+            self.route_logger.append_to_log("Winner = %d points" % object.cost)
+            self.route_logger.append_to_log( json.dumps( object.route, indent=4, encoding="utf-8") )
+        self.route_logger.append_to_log(
+                "1. get stations: %.2f\n" \
+                "2. route calculation: %.2f\n" \
+                "summary: %.2f" \
+                % (t2-t1, t3-t2, t3-t1), True)
+        return self.transport_route_list
+
+    def query_trips(self, start_point, dest_point, start_station, dest_station):
+        log_string = ""
+        if start_station.name == None:
+            log_string += "von %s " % start_point['name']
+        else:
+            log_string += "Von haltestelle %s " % start_station.name.encode("utf-8")
+        if dest_station.name == None:
+            log_string += "nach %s" % dest_point['name']
+        else:
+            log_string += "nach haltestelle %s" % dest_station.name.encode("utf-8")
+        self.route_logger.append_to_log(log_string)
+        # calculate distance, required for delay
+        distance_from_start_to_departure = geometry.distance_between_two_points(
+                start_point['lat'], start_point['lon'],
+                geometry.convert_coordinate_to_float(start_station.lat),
+                geometry.convert_coordinate_to_float(start_station.lon) )
+        # query trips from bahn.de
+        trip_list = []
+        response = self.main_point.calculateConnection(start_station, dest_station,
+                self.fixed_delay + (distance_from_start_to_departure / 50) )
+        if response == None:
+            return
+        trips = response.trips
+        if trips == None:
+            return
+        for trip in trips:
+            if trip.legs.__len__() > 0:
+                trip_list.append(trip)
+        # decide, if trip should be added to transport_route_list
+        for index, trip in enumerate(trip_list):
+            self.route_logger.append_to_log("Connection %d / %d" % (index+1, trip_list.__len__()))
+            new_object = self.create_transport_route_object(start_point, trip.legs, dest_point)
+            if self.transport_route_list.add_transport_route_object(new_object):
+                log_string = "added to transport_route_list"
+            else:
+                log_string = "don't added to transport_route_list"
+            self.route_logger.append_to_log("== %d cost;    %s\n"
+                    % (new_object.cost, log_string))
 
     def create_transport_route_object( self, start_point, legs, dest_point):
         cost = 0
@@ -171,20 +194,6 @@ class RouteTransportCreator:
 
         for index in range(start_index, dest_index):
             leg = legs[index]
-            #if "$Individual" in leg.getClass().getName():
-            #    # a walking part between public transport legs
-            #    distance = geometry.distance_between_two_points(
-            #            geometry.convert_coordinate_to_float(leg.departure.lat),
-            #            geometry.convert_coordinate_to_float(leg.departure.lon),
-            #            geometry.convert_coordinate_to_float(leg.arrival.lat),
-            #            geometry.convert_coordinate_to_float(leg.arrival.lon) )
-            #    placeholder_segment['name'] = "%d Meter Fußweg" % distance
-            #    placeholder_segment['sub_type'] = "footway_place_holder"
-            #    walking_distance += distance
-            #    # route.append(placeholder_segment)
-            #    self.route_logger.append_to_log("fußweg: %d meter; from %s to %s" % (distance,
-            #        leg.departure.name.encode("utf-8"), leg.arrival.name.encode("utf-8")) )
-
             if "$Public" in leg.getClass().getName():
                 # create departure and arrival objects
                 line = leg.line.label.encode("utf-8")
@@ -201,7 +210,7 @@ class RouteTransportCreator:
                 if leg.arrivalStop.plannedArrivalPosition != None:
                     arrival['platform_number'] = leg.arrivalStop.plannedArrivalPosition.name.encode("utf-8")
                 t3 = time.time()
-                print "departure and arrival time: %.2f" % (t3-t1)
+                #print "departure and arrival time: %.2f" % (t3-t1)
                 self.route_logger.append_to_log("line: %s; From %s to %s" % (line, departure['name'], arrival['name']))
 
                 # create transport segment
@@ -506,11 +515,11 @@ class RouteTransportCreator:
         departure_time = 0
         arrival_time = 0
         number_of_trips = 0
-        transport_vehicles = []
+        transportation_vehicles = []
         for part in route:
             if part['type'] == "transport":
                 number_of_trips += 1
-                transport_vehicles.append(part['line'])
+                transportation_vehicles.append(part['line'])
                 arrival_time = part['arrival_time_millis']
                 if departure_time == 0:
                     departure_time = part['departure_time_millis']
@@ -524,13 +533,77 @@ class RouteTransportCreator:
                 % (trip_length, (trip_length/self.costs['min_trip_length'])+1))
 
         # create and return transport route object
-        route_description = self.translator.translate("transport_creator", "transport_route_description") \
-                % (minutes_till_departure, trip_length, (number_of_trips-1),
-                ' '.join(transport_vehicles), walking_distance)
-        return RouteTransportCreator.TransportRouteObject(route, cost, route_description)
+        if cost < 100:
+            route_description = self.translator.translate("transport_creator", "transport_route_description") \
+                    % (minutes_till_departure, trip_length, (number_of_trips-1),
+                    ' '.join(transportation_vehicles), walking_distance)
+        else:
+            route_description = self.translator.translate("transport_creator", "transport_route_description_no_time") \
+                    % (minutes_till_departure, trip_length, (number_of_trips-1),
+                    ' '.join(transportation_vehicles), walking_distance)
+        return RouteTransportCreator.TransportRouteObject(route, cost,
+                route_description, departure_time, ','.join(transportation_vehicles))
+
+    class TransportRouteList:
+        def __init__(self):
+            self.routes = {}
+
+        def add_transport_route_object(self, new_object):
+            if self.routes.has_key(new_object.transportation_vehicles):
+                for index, object in enumerate(self.routes[new_object.transportation_vehicles]):
+                    time_diff = new_object.departure_time_millis - object.departure_time_millis
+                    if math.fabs(time_diff) < 180000:
+                        if new_object.cost < object.cost:
+                            self.routes[new_object.transportation_vehicles].__delitem__(index)
+                            break
+                        else:
+                            return False
+                self.routes[new_object.transportation_vehicles].append(new_object)
+                self.routes[new_object.transportation_vehicles].sort(
+                        key = operator.attrgetter('cost', 'departure_time_millis') )
+            else:
+                self.routes[new_object.transportation_vehicles] = [ new_object ]
+            return True
+
+        def get_size(self):
+            return self.routes.keys().__len__()
+
+        def get_best_route(self):
+            if self.routes.keys().__len__() == 0:
+                return None
+            best_object = self.routes[self.routes.keys()[0]][0]
+            for key in self.routes.keys():
+                if best_object.cost > self.routes[key][0].cost:
+                    best_object = self.routes[key][0]
+            return best_object
+
+        def enough_routes(self, number_of_possible_routes):
+            counter = 0
+            for key in self.routes.keys():
+                if self.get_average_cost_value(key) < 100:
+                    counter += 1
+            if counter >= number_of_possible_routes:
+                return True
+            return False
+
+        def clean_route_dict(self):
+            for key in self.routes.keys():
+                print "%s: %d" % (key, self.get_average_cost_value(key))
+                if self.get_average_cost_value(key) >= 200:
+                    self.routes.__delitem__(key)
+                    print "deleted"
+
+        def get_average_cost_value(self, routes_key):
+            average_cost_value = 0
+            for object in self.routes[routes_key]:
+                average_cost_value += object.cost
+            return average_cost_value / self.routes[routes_key].__len__()
 
     class TransportRouteObject:
-        def __init__(self, route, cost, route_description):
+        def __init__(self, route, cost, route_description, departure_time_millis, transportation_vehicles):
             self.route = route
             self.cost = cost
             self.description = route_description
+            self.departure_time_millis = departure_time_millis
+            self.transportation_vehicles = transportation_vehicles
+

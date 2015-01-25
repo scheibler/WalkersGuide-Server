@@ -181,7 +181,19 @@ Osm2po creates a database table which represents the routing graph of all street
 graph is needed by pgrouting to calculate a route from start to the point of destination. The tool
 must be downloaded from http://www.osm2po.de/ and extracted to the folder named "osm2po".
 
-Then clone this repository:
+To use osm2po you have to  accept it's license once. To do so, enter it's folder, start the
+demo.sh script and type "yes" when instructed. After that you can cancel the process and delete the
+already created folder.
+
+```
+cd osm2po
+chmod +x demo.sh
+./demo.sh
+# type yes and cancel by pressing ^c
+rm -R hh
+```
+
+Lastly clone this repository:
 
 ```
 cd ..
@@ -305,78 +317,10 @@ Afterwards do the same with the config file in the src folder.
 mv src/configuration.rc.example src/configuration.rc
 ```
 
-Lastly you have to adapt the settings of the osm2po program. To do this, open it's config file
-
-```
-vim /data/routing/tools/osm2po/osm2po.config
-```
-
-and change the way type values to fit walkers needs:
-
-```
-[...]
-######################################################################
-# DEFAULT TAG RESOLVER
-######################################################################
-wtr.flagList = foot, gradeoneortwo, car, bike, rail, ferry
-wtr.finalMask = foot
-wtr.shuttleTrainMask = rail|car
-# Main-Tag definitions. Params 1-4:
-# 1) concurrent order
-# 2) class (1-127)
-# 3) default speed in kmh == I don't use the km/h option but use the value to define the
-#     accessibility of the way type from 1: very good to 5: very bad (10 is not passably)
-# 4) allowed transportation type (optional) - since v4.5.30
-# road types and their weights
-# Bundesstraße
-wtr.tag.highway.primary =        1, 1, 5,  foot
-# Zubringer auf Bundesstraße
-wtr.tag.highway.primary_link =   1, 2, 5,  foot
-# gut ausgebaute Landstraße mit Mittelstreifen
-wtr.tag.highway.secondary =      1, 3, 3,  foot
-# Landstraßenzubringer
-wtr.tag.highway.secondary_link = 1, 4, 3,  foot
-# Nebenstraße
-wtr.tag.highway.tertiary =       1, 5, 1,  foot
-# noch kleinere Nebenstraße
-wtr.tag.highway.unclassified =   1, 6, 1, foot
-# Straße in Wohngebieten
-wtr.tag.highway.residential =    1, 7, 1,  foot
-# alle unbekannten straßen
-wtr.tag.highway.road =           1, 8, 4,  foot
-# Privatstraßen
-wtr.tag.highway.service =       1, 9, 4,   foot
-# Spiel / Wohnstraße
-wtr.tag.highway.living_street = 1, 10, 2,   foot
-# Fußgängerzone
-wtr.tag.highway.pedestrian =    1, 11, 3,  foot
-# Feld - oder Waldweg
-wtr.tag.highway.track =         1, 12, 5, foot
-wtr.allow.tracktype.grade[1|2] = gradeoneortwo
-# Pfad, Wanderweg
-wtr.tag.highway.path =          1, 13, 5, foot
-# Fußweg
-wtr.tag.highway.footway =       1, 14, 3,   foot
-# Treppen
-wtr.tag.highway.steps =         1, 15, 4,   foot
-# fahrradwege
-wtr.tag.highway.cycleway =      1, 16, 5,  foot
-# zug
-wtr.tag.railway.rail =           1, 17, 10,  foot
-# straßenbahn
-wtr.tag.railway.tram =           1, 18, 10,  foot
-# not used
-# autobahn
-# wtr.tag.highway.motorway =       1, 11, 120, car
-# autobahn zubringer
-# wtr.tag.highway.motorway_link =  1, 12, 30,  car
-# autobahnähnliche Straße
-# wtr.tag.highway.trunk =          1, 13, 90,  car
-# Zubringer auf autobahnähnliche Straße
-# wtr.tag.highway.trunk_link =     1, 14, 30,  car
-# wtr.tag.route.ferry =            2, 01, 10,  ferry
-# wtr.tag.route.shuttle_train =    2, 02, 50,  rail|car
-```
+Lastly you have to adapt the settings of the osm2po program. You can find a sample config file for
+the osm2po version 5.0 in the misc folder. This file is optimized for the usage with the
+WalkersGuide-Server application. In most cases you don't need to change it. Just copy it where you
+want to and specify it's path in the configuration.rc file in the scripts directory.
 
 
 Create new database

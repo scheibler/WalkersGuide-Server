@@ -28,17 +28,26 @@ public class QueryData {
     public QueryTripsResult calculateConnection(Location from, Location to, int delay) {
         Date departureDate = new Date( System.currentTimeMillis() + delay*60000 );
         try {
-            return provider.queryTrips(
+            QueryTripsResult result = provider.queryTrips(
                     from, null, to, departureDate, true, Product.ALL,
                     WalkSpeed.SLOW, Accessibility.NEUTRAL, null);
+            // try to get some more trips
+            if (result.context.canQueryLater()) {
+                QueryTripsResult laterResult = provider.queryMoreTrips(result.context, true);
+                for (int i=0; i<laterResult.trips.size(); i++) {
+                    result.trips.add(laterResult.trips.get(i));
+                }
+            }
+            return result;
         } catch (IOException e) {
             return null;
         }        
     }
 
-    public QueryDeparturesResult getDepartures(int stationID, int numberOfResults) {
+    public QueryDeparturesResult getDepartures(String stationID) {
         try {
-            return provider.queryDepartures( stationID, numberOfResults, false);
+            return provider.queryDepartures(stationID,
+                    new Date( System.currentTimeMillis()), 0, false);
         } catch (IOException e) {
             return null;
         }        

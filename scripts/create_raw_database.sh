@@ -30,20 +30,20 @@ fi
 
 # download new map and state file
 echo "download new map -- started at $(get_timestamp)"
-wget -q -O "$zipped_osm_file" "$download_map_url"
-if [ ! -f "$zipped_osm_file" ]; then
-    echo "Error: Could not download new map data"
-    exit 31
-fi
 wget -q -O "$map_state_file" "$download_state_file_url"
 if [ ! -f "$map_state_file" ]; then
     echo "Error: Could not download new map state file"
     exit 31
 fi
+wget -q -O "$pbf_osm_file" "$download_map_url"
+if [ ! -f "$pbf_osm_file" ]; then
+    echo "Error: Could not download new map data"
+    exit 31
+fi
 
 # extract dumps from downloaded map file
 echo -e "\nCreate database dumps -- started at $(get_timestamp)"
-bzcat "$zipped_osm_file" | "$osmosis_file" --read-xml file=- --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
+"$osmosis_file" --read-pbf-fast file="$pbf_osm_file" workers=4 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
 if [[ $? != 0 ]]; then
     echo "Can't create dumps for import"
     exit 32

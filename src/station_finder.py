@@ -10,7 +10,7 @@ class StationFinder:
 
     def __init__(self, translator_object):
         self.translator = translator_object
-        self.poi = POI("00000", translator_object)
+        self.poi = POI("00000", translator_object, True)
         self.stations = []
 
     def get_station(self, db_station, line, direction):
@@ -33,8 +33,8 @@ class StationFinder:
             direction = direction.encode("utf-8")
         new_station = {"lat":lat, "lon":lon, "node_id":-1, "accuracy":False, "type":"station"}
         t1 = time.time()
-        print line
-        print direction
+        #print line
+        #print direction
         if line.startswith("T") == True or line.startswith("B") == True:
             # transport class 1
             new_station['transportation_class'] = 1
@@ -47,7 +47,7 @@ class StationFinder:
             station_list = []
             while station_list.__len__() == 0:
                 station_list = self.poi.get_poi(lat, lon, radius, ["transportation_class_1"])
-                print "radius = %d" % radius
+                #print "radius = %d" % radius
                 radius *= 2
             t3 = time.time()
             reference_station_name = station_list[0]['name']

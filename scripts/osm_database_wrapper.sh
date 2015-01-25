@@ -38,7 +38,7 @@ if [[ "$1" == "update_raw" ]]; then
         echo -e "$(<$temp_log_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: raw database update failed" "$recipient_mail_address"
         echo "$(get_timestamp)   OSM raw database update failed" >> "$log_file"
     else
-        echo -e "$(<$temp_log_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: raw database update successful" "$recipient_mail_address"
+        #echo -e "$(<$temp_log_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: raw database update successful" "$recipient_mail_address"
         echo "$(get_timestamp)   OSM raw database update successful" >> "$log_file"
     fi
     rm "$lock_file"

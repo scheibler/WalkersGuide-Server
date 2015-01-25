@@ -19,8 +19,10 @@ class RouteLogger:
                     % self.file_name[:os.pathconf(log_folder, 'PC_NAME_MAX')-10]
         self.append_to_log(file_name.replace(".", " ").replace("-", "  --  "))
 
-    def append_to_log(self, data):
+    def append_to_log(self, data, print_on_screen = False):
         file = open(self.file_name, "a")
         file.write("%s\n" % data)
         file.close()
+        if print_on_screen:
+            print data
 

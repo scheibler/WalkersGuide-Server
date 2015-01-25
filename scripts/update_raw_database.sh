@@ -20,13 +20,14 @@ fi
 counter=1
 while (( local_map_version < online_map_version )); do
     echo "database is at state $local_map_version, must be updated to state $online_map_version"
-    "$osmosis_folder/bin/osmosis" --rri workingDirectory="$maps_folder" --simplify-change --wpc user="$user_name" database="$db_raw_name" password="$password"
-    if [[ $? != 0 ]]; then
-        echo "Error during update process"
+    if (( counter > number_of_map_updates )); then
+        echo "Max number of update cycles reached. Counter = $counter"
         exit 12
     fi
-    if (( counter >= number_of_map_updates )); then
-        echo "Max number of update cycles reached. Counter = $counter"
+    "$osmosis_folder/bin/osmosis" --rri workingDirectory="$maps_folder" --simplify-change \
+        --wpc host="$server_address" database="$db_raw_name" user="$user_name" password="$password"
+    if [[ $? != 0 ]]; then
+        echo "Error during update process"
         exit 12
     fi
     local_map_version=$(grep "sequenceNumber" "$map_state_file" | cut -d '=' -f2)

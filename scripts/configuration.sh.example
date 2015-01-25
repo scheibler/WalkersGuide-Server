@@ -16,7 +16,7 @@ osmconvert_file="$tools_folder/osmconvert"
 osmosis_folder="$tools_folder/osmosis"
 osmosis_file="$osmosis_folder/bin/osmosis"
 osm2po_folder="$tools_folder/osm2po"
-osm2po_file="$osm2po_folder/osm2po-core-4.8.8-signed.jar"
+osm2po_file="$osm2po_folder/osm2po-core-5.0.0-signed.jar"
 osm2po_config="$osm2po_folder/osm2po.config"
 
 # logs
@@ -34,6 +34,7 @@ db_prefix="eu"
 # next is the database server address, mostly the Postgresql database server is at the same machine
 # like the rest, so it can be unchanged
 server_address="127.0.0.1"
+server_port=5432
 user_name="wgs_writer"
 password=""
 # don't delete next line, otherwise database access isn't possible
@@ -42,10 +43,10 @@ export PGPASSWORD=$password
 # map settings
 # map of Europe
 # mostly you only have to change the two URL's
-download_map_url="http://download.geofabrik.de/europe-latest.osm.bz2"
+download_map_url="http://download.geofabrik.de/europe-latest.osm.pbf"
 update_map_url="http://download.geofabrik.de/europe-updates/"
 download_state_file_url=$update_map_url"state.txt"
-zipped_osm_file="$maps_folder/map.osm.bz2"
+pbf_osm_file="$maps_folder/map.osm.pbf"
 o5m_osm_file="$maps_folder/map.o5m"
 map_state_file="$maps_folder/state.txt"
 productive_db_map_state_file="$map_state_file.productive"

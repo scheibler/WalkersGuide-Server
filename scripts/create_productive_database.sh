@@ -16,16 +16,16 @@ if [ ! -z "$result" ]; then
 fi
 
 # download new map, needed for route table creator
-if [ -f "$zipped_osm_file" ]; then
-    rm -f "$zipped_osm_file"
+if [ -f "$pbf_osm_file" ]; then
+    rm -f "$pbf_osm_file"
     if [[ $? != 0 ]]; then
         echo "Could not delete old maps file"
         exit 22
     fi
 fi
 echo "download new map -- started at $(get_timestamp)"
-wget -q -O "$zipped_osm_file" "$download_map_url"
-if [ ! -f "$zipped_osm_file" ]; then
+wget -q -O "$pbf_osm_file" "$download_map_url"
+if [ ! -f "$pbf_osm_file" ]; then
     echo "Error: Could not download new map data"
     exit 22
 fi
@@ -40,7 +40,7 @@ if [ -f "$o5m_osm_file" ]; then
         exit 22
     fi
 fi
-bzcat "$zipped_osm_file" | "$osmconvert_file" - -o="$o5m_osm_file"
+"$osmconvert_file" "$pbf_osm_file" -o="$o5m_osm_file"
 if [ ! -f "$o5m_osm_file" ]; then
     echo "o5m file could not be created"
     exit 22
@@ -69,7 +69,7 @@ if [ -d "$temp_folder/$db_prefix" ]; then
 fi
 current_folder="$(pwd)"
 cd "$temp_folder"
-bzcat "$zipped_osm_file" | java -Xmx$ram -jar "$osm2po_file" config="$osm2po_config" prefix="$db_prefix" cmd=tjsgp
+java -Xmx$ram -jar "$osm2po_file" config="$osm2po_config" prefix="$db_prefix" cmd=tjsgp "$pbf_osm_file"
 rc=$?
 cd "$current_folder"
 if [[ $rc != 0 ]]; then
@@ -90,7 +90,16 @@ CREATE INDEX idx_"$routing_table_name"_osm_source_id ON $routing_table_name(osm_
 CREATE INDEX idx_"$routing_table_name"_osm_target_id ON $routing_table_name(osm_target_id);\n\
 CREATE INDEX idx_"$routing_table_name"_geom_way  ON $routing_table_name USING GIST (geom_way);\n\
 -- update kmh table\n\
-update $routing_table_name set kmh=2 where clazz = 12 and flags = 3;\n\
+-- set all ways with foot = no to impassable\n\
+update $routing_table_name set kmh=8 where get_bit(flags::bit(8), 5) = 1;\n\
+-- set all cycleways with foot = yes to kategory 5\n\
+update $routing_table_name set kmh=5 where clazz = 17 and get_bit(flags::bit(8), 6) = 1;\n\
+update $routing_table_name set kmh=4 where \n\
+    (get_bit(flags::bit(8), 4) = 1 or get_bit(flags::bit(8), 3) = 1 or get_bit(flags::bit(8), 2) = 1)\n\
+    and (\n\
+        (clazz = 12 or clazz = 13 or clazz = 14 or clazz = 15)\n\
+        or (clazz = 17 and get_bit(flags::bit(8), 6) = 1)\n\
+    );\n\
 -- cluster and analyse\n\
 cluster $routing_table_name USING idx_"$routing_table_name"_geom_way;\n\
 ANALYSE $routing_table_name;\n\
@@ -106,11 +115,10 @@ CREATE TABLE way_class_weights(\n\
     x1 int );\n\
 CREATE UNIQUE INDEX way_class_weights_idx ON way_class_weights (id);\n\
 INSERT INTO way_class_weights VALUES (1, 60, 50, 33, 20, 0);\n\
-INSERT INTO way_class_weights VALUES (2, 30, 25, 16, 10, 0);\n\
-INSERT INTO way_class_weights VALUES (3, 0, 0, 0, 0, 0);\n\
-INSERT INTO way_class_weights VALUES (4, -30, -25, -16, -10, 0);\n\
-INSERT INTO way_class_weights VALUES (5, -60, -50, -33, -20, 0);\n\
-INSERT INTO way_class_weights VALUES (10, 200, 200, 200, 200, 200);"
+INSERT INTO way_class_weights VALUES (2, 0, 0, 0, 0, 0);\n\
+INSERT INTO way_class_weights VALUES (3, -60, -50, -33, -20, 0);\n\
+INSERT INTO way_class_weights VALUES (4, -400, -400, -400, -400, -400);\n\
+INSERT INTO way_class_weights VALUES (5, 101, 101, 101, 101, 101);"
 echo -e "$commands" >> "$temp_folder/$db_prefix/$routing_table_name.sql"
 
 # import data into database

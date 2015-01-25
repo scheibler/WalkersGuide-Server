@@ -82,6 +82,13 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_route_factor_option")
             return helper.zip_data(return_tuple)
 
+        # allowed way classes
+        if options.has_key("allowed_way_classes") == False:
+            allowed_way_classes = ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "steps"]
+        else:
+            allowed_way_classes = options['allowed_way_classes']
+        print allowed_way_classes
+
         # create session id
         if options.has_key("session_id") == False:
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
@@ -108,16 +115,18 @@ class RoutingWebService():
                 source_route[-1]['name'].replace(" ", ".") ))
 
         # get a route
-        rfc = RouteFootwayCreator(session_id, route_logger, translator)
+        rfc = RouteFootwayCreator(session_id, route_logger, translator,
+                options['route_factor'], allowed_way_classes)
         return_tuple['route'].append(source_route[0])
         for i in range(1, source_route.__len__(), 2):
             if source_route[i]['type'] == "footway" and source_route[i]['sub_type'] == "footway_place_holder":
-                route_part = rfc.find_footway_route(source_route[i-1], source_route[i+1], options['route_factor'])
-                if route_part == None:
+                try:
+                    route_part = rfc.find_footway_route(source_route[i-1], source_route[i+1])
+                except RouteFootwayCreator.FootwayRouteCreationError as e:
                     Config().confirm_removement_of_session_id(session_id)
                     route_logger.append_to_log("\n----- result -----\ncanceled")
                     return_tuple['route'] = []
-                    return_tuple['error'] = translator.translate("message", "process_canceled")
+                    return_tuple['error'] = "%s" % e
                     return helper.zip_data(return_tuple)
                 route_part.__delitem__(0)
                 return_tuple['route'] += route_part
@@ -233,22 +242,25 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
+        # get a route
         route_logger = RouteLogger("routes", "%s-way_id.%s"
                 % (start_point['name'].replace(" ", "."), options['way_id']))
-
-        # get a route
-        rfc = RouteFootwayCreator(session_id, route_logger, translator)
-        route = rfc.follow_this_way(start_point,
-                options['way_id'], options['bearing'], add_all_intersections)
-        if route == None:
-            return_tuple['error'] = translator.translate("message", "process_canceled")
+        rfc = RouteFootwayCreator(session_id, route_logger, translator, 1.0,
+                ["streets", "paved_ways", "unpaved_ways", "steps"])
+        try:
+            route = rfc.follow_this_way(start_point,
+                    options['way_id'], options['bearing'], add_all_intersections)
+        except RouteFootwayCreator.FootwayRouteCreationError as e:
             route_logger.append_to_log("\n----- result -----\ncanceled")
-        else:
-            return_tuple['route'] = route
-            return_tuple['description'] = rfc.get_route_description( return_tuple['route'] )
-            route_logger.append_to_log("\n----- result -----\n")
-            route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") + "\n----- end of route -----\n")
-
+            Config().confirm_removement_of_session_id(session_id)
+            return_tuple['route'] = []
+            return_tuple['error'] = "%s" % e
+            return helper.zip_data(return_tuple)
+        # return calculated route
+        return_tuple['route'] = route
+        return_tuple['description'] = rfc.get_route_description( return_tuple['route'] )
+        route_logger.append_to_log("\n----- result -----\n")
+        route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") + "\n----- end of route -----\n")
         # convert return_tuple to json and zip it, before returning
         Config().confirm_removement_of_session_id(session_id)
         return helper.zip_data(return_tuple)
@@ -260,10 +272,14 @@ class RoutingWebService():
         cherrypy.response.headers['Content-Type'] = 'application/gzip'
         # create the return tuple
         return_tuple = {}
-        return_tuple['transport_routes'] = []
+        return_tuple['transport_routes'] = {}
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         translator = Translator(Config().get_param("default_language"))
+
+        #f = open("/tmp/tr_routes.json", "r")
+        #return_tuple['transport_routes'] = json.loads(f.read())
+        #return helper.zip_data(return_tuple)
 
         # parse json encoded input
         input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
@@ -352,33 +368,31 @@ class RoutingWebService():
                 source_route[-1]['name'].replace(" ", ".") ))
 
         # parse route parts
-        return_tuple['transport_routes'] = []
         rtc = RouteTransportCreator(session_id, route_logger, translator)
         for i in range(1, source_route.__len__(), 2):
             if source_route[i]['type'] == "footway" and source_route[i]['sub_type'] == "transport_place_holder":
-                transport_route_list = rtc.find_transport_route(source_route[i-1], source_route[i+1], options['number_of_possible_routes'])
+                result = rtc.find_best_transport_routes(source_route[i-1], source_route[i+1],
+                        options['number_of_possible_routes'])
+                return_tuple['transport_routes'] = result.routes
+                pre_source_route = source_route[0:i-1]
+                post_source_route = source_route[i+2:source_route.__len__()]
                 break
-        if transport_route_list == None:
+        if return_tuple['transport_routes'] == None:
             Config().confirm_removement_of_session_id(session_id)
             route_logger.append_to_log("\n----- result -----\ncanceled")
             return_tuple['transport_routes'] = []
             return_tuple['error'] = translator.translate("message", "process_canceled")
             return helper.zip_data(return_tuple)
-        for route in transport_route_list:
-            transport_route = {}
-            transport_route['description'] = route.description
-            transport_route['route'] = [ source_route[0] ]
-            for i in range(1, source_route.__len__(), 2):
-                if source_route[i]['type'] == "footway" and source_route[i]['sub_type'] == "transport_place_holder":
-                    route_part = route.route
-                    route_part.__delitem__(0)
-                    transport_route['route'] += route_part
-                else:
-                    transport_route['route'].append(source_route[i])
-                    transport_route['route'].append(source_route[i+1])
-            return_tuple['transport_routes'].append(transport_route)
-            route_logger.append_to_log("\n----- %s -----\n" % transport_route['description'])
-            route_logger.append_to_log( json.dumps( transport_route['route'], indent=4, encoding="utf-8") + "\n----- end of route -----\n\n")
+
+        for key in return_tuple['transport_routes'].keys():
+            serializable_list = []
+            for route in return_tuple['transport_routes'][key]:
+                route.route = pre_source_route + route.route + post_source_route
+                serializable_list.append(route.__dict__)
+            return_tuple['transport_routes'][key] = serializable_list
+        f = open("/tmp/tr_routes.json", "w")
+        f.write(json.dumps(return_tuple['transport_routes'], indent=4, encoding="utf-8"))
+        f.close()
 
         # convert return_tuple to json and zip it, before returning
         Config().confirm_removement_of_session_id(session_id)
@@ -603,7 +617,7 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
 
         # get departures for station
-        departures_result = main_point.getDepartures( station.id, 0 )
+        departures_result = main_point.getDepartures( station.id)
         if departures_result.status.toString() == "INVALID_STATION":
             return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
             return helper.zip_data(return_tuple)
@@ -719,8 +733,8 @@ class RoutingWebService():
         return_tuple = {}
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        return_tuple['interface'] = 0.1
-        return_tuple['server'] = 0.1
+        return_tuple['interface'] = 3
+        return_tuple['server'] = "0.2.0"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

@@ -39,6 +39,9 @@ def bearing_between_two_points(lat1, lon1, lat2, lon2):
     return int(compass_bearing)
 
 def distance_between_two_points(lat1, lon1, lat2, lon2):
+    return int(distance_between_two_points_as_float(lat1, lon1, lat2, lon2))
+
+def distance_between_two_points_as_float(lat1, lon1, lat2, lon2):
     """
         Calculate the great circle distance between two points
         on the earth (specified in decimal degrees)
@@ -50,7 +53,7 @@ def distance_between_two_points(lat1, lon1, lat2, lon2):
     dlat = lat2 - lat1
     a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
     c = 2 * math.asin(math.sqrt(a))
-    return int(6367 * c * 1000)
+    return 6367 * c * 1000
 
 def convert_coordinate_to_float(coordinate):
     if type(coordinate) == type(0.0):

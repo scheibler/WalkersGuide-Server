@@ -9,9 +9,10 @@ import math, time
 
 class POI:
 
-    def __init__(self, session_id, translator_object):
+    def __init__(self, session_id, translator_object, hide_log_messages=False):
         self.session_id = session_id
         self.translator = translator_object
+        self.hide_log_messages = hide_log_messages
 
     def get_poi(self, lat, lon, radius, tag_list, search=""):
         # tags and limits
@@ -82,7 +83,8 @@ class POI:
                                 lon, lat, lon, lat))[0]
                     if result['distance'] > radius:
                         smallest_limit = limit
-                        print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
+                        if self.hide_log_messages == False:
+                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
                         break
                     # check for cancel command
                     if Config().has_session_id_to_remove(self.session_id):
@@ -115,7 +117,8 @@ class POI:
                     Config().confirm_removement_of_session_id(self.session_id)
                     return
             t3 = time.time()
-            print "intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+            if self.hide_log_messages == False:
+                print "intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         # stations
         if tags['station'] != "":
@@ -139,7 +142,8 @@ class POI:
                             % (lon, lat, limit, lon, lat, lon, lat))[0]
                     if result['distance'] > radius:
                         smallest_limit = limit
-                        print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
+                        if self.hide_log_messages == False:
+                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
                         break
                     # check for cancel command
                     if Config().has_session_id_to_remove(self.session_id):
@@ -172,7 +176,8 @@ class POI:
                     Config().confirm_removement_of_session_id(self.session_id)
                     return
             t3 = time.time()
-            print "station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+            if self.hide_log_messages == False:
+                print "station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         # poi
         if tags['poi'] != "":
@@ -195,7 +200,8 @@ class POI:
                             % (lon, lat, limit, lon, lat, lon, lat))[0]
                     if result['distance'] > radius:
                         smallest_limit = limit
-                        print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
+                        if self.hide_log_messages == False:
+                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
                         break
                     # check for cancel command
                     if Config().has_session_id_to_remove(self.session_id):
@@ -227,7 +233,8 @@ class POI:
                     Config().confirm_removement_of_session_id(self.session_id)
                     return
             t3 = time.time()
-            print "poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+            if self.hide_log_messages == False:
+                print "poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         # traffic signals
         if tags['traffic_signals'] != "":
@@ -250,7 +257,8 @@ class POI:
                             % (lon, lat, limit, lon, lat, lon, lat))[0]
                     if result['distance'] > radius:
                         smallest_limit = limit
-                        print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
+                        if self.hide_log_messages == False:
+                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
                         break
                     # check for cancel command
                     if Config().has_session_id_to_remove(self.session_id):
@@ -281,10 +289,12 @@ class POI:
                     Config().confirm_removement_of_session_id(self.session_id)
                     return
             t3 = time.time()
-            print "traffic signals gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+            if self.hide_log_messages == False:
+                print "traffic signals gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         te = time.time()
-        print "gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), poi_list.__len__())
+        if self.hide_log_messages == False:
+            print "gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), poi_list.__len__())
         return poi_list
 
     #####

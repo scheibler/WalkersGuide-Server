@@ -1,7 +1,20 @@
-SRC: Routing server
-v0.1, 01.09.2014::
+Routing server
+v0.1.0, 01.09.2014::
     - Initial release
+    src:
+        - webserver interface = 2
 v0.1.1, 07.12.2014:
-    - restricted length of log file name
-    - Added OSM Node ID's to POI objects
-
+    src:
+        - restricted length of log file name
+        - Added OSM Node ID's to POI objects
+v0.2.0, 25.01.2015:
+    PublicTransportInterface:
+        - added new PublicTransportEnabler library
+    src:
+        - webserver interface = 3
+        - user can choose way classes for footway routing
+        - transport routes grouped by departure time and vehicles
+    scripts:
+        - map data: changed from osm.bz2 to pbf
+    other:
+        - added an example configuration file for osm2po version 5.0, required for new way classes

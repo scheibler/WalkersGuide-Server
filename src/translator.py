@@ -48,6 +48,13 @@ class Translator:
             if tag == "process_canceled": return "Prozess abgebrochen"
 
         if category == "footway_creator":
+            if tag == "foot_route_creation_failed": return "Die Fußgängerroute konnte nicht erstellt werden."
+            if tag == "foot_route_creation_failed_way_classes_missing":
+                return "Die Fußgängerroute konnte nicht erstellt werden. " \
+                        "Aktivieren sie weitere Wegklassen und versuchen Sie es erneut."
+            if tag == "foot_route_creation_failed_no_existing_way":
+                return "Die Fußgängerroute konnte nicht erstellt werden. " \
+                        "Zwischen dem Start- und dem Zielpunkt existiert keine Route."
             if tag == "direct_connection": return "Luftlinie zwischen Start und Ziel"
             if tag == "first_segment": return "Namenloses Wegsegment"
             if tag == "last_segment": return "Namenloses Wegsegment"
@@ -70,6 +77,9 @@ class Translator:
             if tag == "different_station": return "Weiterfahrt von anderer Station"
             if tag == "transport_route_description": return textwrap.dedent("""\
                     Abfahrt in %d Minuten, Fahrzeit: %d Minuten, %d mal umsteigen, 
+                    Verkehrsmittel: %s, Fußweg: %d Meter""")
+            if tag == "transport_route_description_no_time": return textwrap.dedent("""\
+                    Abfahrt in %d Minuten, Fahrzeit: %d Minuten, %d mal umsteigen (wenig Zeit), 
                     Verkehrsmittel: %s, Fußweg: %d Meter""")
 
         if category == "poi":
@@ -277,7 +287,8 @@ class Translator:
             if tag == "services": return "Autobahnraststätte"
             if tag == "steps": return "Treppe"
             if tag == "stile": return "Zaunübertritt"
-            if tag == "tertiary": return "Tertiärstraße"
+            if tag == "tertiary": return "Nebenstraße"
+            if tag == "tertiary_link": return "Nebenstraße"
             if tag == "track": return "Feldweg"
             if tag == "trail": return "Pfad"
             if tag == "trunk": return "Fernverkehrsstraße"
@@ -620,6 +631,13 @@ class Translator:
             if tag == "process_canceled": return "Process canceled"
 
         if category == "footway_creator":
+            if tag == "foot_route_creation_failed": return "The footway route could not be created."
+            if tag == "foot_route_creation_failed_way_classes_missing":
+                return "The footway route could not be created. " \
+                        "Please activate additional way classes and try again."
+            if tag == "foot_route_creation_failed_no_existing_way":
+                return "The footway route could not be created. " \
+                        "Found no way between the start and destination point."
             if tag == "direct_connection": return "Beeline between start and destination"
             if tag == "first_segment": return "Nameless route segment"
             if tag == "last_segment": return "Nameless route segment"
@@ -642,7 +660,10 @@ class Translator:
             if tag == "different_station": return "Continuation from different station"
             if tag == "transport_route_description": return textwrap.dedent("""\
                     Departure in %d minutes, Duration: %d minutes, %d changes,
-                    Transportation vehicle: %s, Route length: %d""")
+                    Transportation vehicles: %s, Route length: %d meters""")
+            if tag == "transport_route_description_no_time": return textwrap.dedent("""\
+                    Departure in %d minutes, Duration: %d minutes, %d changes (time limited),
+                    Transportation vehicles: %s, Route length: %d meters""")
 
         if category == "poi":
             if tag == "address": return "Address"
@@ -850,6 +871,7 @@ class Translator:
             if tag == "steps": return "Steps"
             if tag == "stile": return "Stile"
             if tag == "tertiary": return "Tertiary Road"
+            if tag == "tertiary_link": return "Tertiary Road"
             if tag == "track": return "Track"
             if tag == "trail": return "Trail"
             if tag == "trunk": return "Trunk Road"

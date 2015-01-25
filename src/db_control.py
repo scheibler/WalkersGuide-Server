@@ -32,8 +32,9 @@ class DBControl():
             else:
                 print e
                 sys.exit(1)
-        if con:
-            con.close()
+        finally:
+            if con:
+                con.close()
         return rows
 
     def send_data(self, query):
