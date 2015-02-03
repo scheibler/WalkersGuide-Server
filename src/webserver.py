@@ -734,7 +734,7 @@ class RoutingWebService():
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         return_tuple['interface'] = 3
-        return_tuple['server'] = "0.2.0"
+        return_tuple['server'] = "0.2.1"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

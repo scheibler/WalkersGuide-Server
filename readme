@@ -45,10 +45,10 @@ Debian operating system.
 
 ### Postgresql, Postgis and pgrouting ###
 
-The following steps describe the installation process for Debian Wheezy (stable):
-
-Add the Postgresql software repository. That's necessary cause the Debian repositories still contain
-version 1.5 of the Postgresql extension Postgis but v2.0 is needed.
+We need Postgresql version >= 9.1, Postgis version >= 2.0 and pgrouting.  If you still use Debian
+Wheezy, you must add the external Postgresql software repository first. That's necessary cause the
+Debian repositories still contain version 1.5 of the Postgresql extension Postgis but at least v2.0
+is required. If you use Debian Jessie instead, you can skip the following instructions.
 
 ```
 root# echo "deb http://apt.postgresql.org/pub/repos/apt/ wheezy-pgdg main" > /etc/apt/sources.list.d/pgdg.list
@@ -56,30 +56,8 @@ root# wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc |  ap
 root# aptitude update && aptitude upgrade
 ```
 
-Install Postgresql and Postgis (an extension to handle spacial data types like points and lines):
-
-```
-root# aptitude install postgresql postgresql-contrib postgresql-9.3-postgis-2.1 postgis
-```
-
-Now we need pgrouting, an Postgresql extension which adds routing algorithms. It's not in the
-repositories, so we have to compile it.
-
-```
-root# aptitude install cmake postgresql-server-dev-all libboost-all-dev libproj-dev libgeos-dev libcgal-dev
-root# exit
-osm$ cd /tmp
-osm$ wget https://github.com/pgRouting/pgrouting/archive/v2.0.0.tar.gz
-osm$ tar xfz v2.0.0.tar.gz
-osm$ cd pgrouting-2.0.0
-osm$ cmake .
-osm$ make
-osm$ sudo make install
-```
-
-If you already use Debian Jessie (testing) the installation process is much easier cause all
-necessary packages can be found in the standard repositories now. So for Debian Jessie you have to
-install:
+Then install Postgresql, Postgis (an extension to handle spacial data types like points and lines)
+and pgrouting. You can choose every Postgresql version since 9.1:
 
 ```
 root# aptitude install postgresql-9.3 postgresql-contrib-9.3 postgresql-9.3-postgis-2.1 postgresql-9.3-pgrouting
@@ -258,17 +236,17 @@ root# vim /etc/postgresql/9.3/main/postgresql.conf
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
 #------------------------------------------------------------------------------
-default_statistics_target = 500   # suggested 50
-maintenance_work_mem = 1GB # pgtune wizard 2014-07-01
-constraint_exclusion = on # pgtune wizard 2014-07-01
-checkpoint_completion_target = 0.9 # pgtune wizard 2014-07-01
 effective_cache_size = 22GB # pgtune wizard 2014-07-01
-work_mem = 512MB   # suggested 192MB
+shared_buffers = 9GB
+maintenance_work_mem = 1GB # pgtune wizard 2014-07-01
+work_mem = 256MB   # suggested 192MB
+temp_buffers = 32MB
 wal_buffers = 16MB   # suggested 8MB
 checkpoint_segments = 64   # suggested 16
-shared_buffers = 7680MB # pgtune wizard 2014-07-01
+checkpoint_completion_target = 0.9 # pgtune wizard 2014-07-01
+default_statistics_target = 500   # suggested 50
+constraint_exclusion = on # pgtune wizard 2014-07-01
 max_connections = 20 # pgtune wizard 2014-07-01
-temp_buffers = 32MB
 random_page_cost = 2.0
 
 # encoding and localisation
@@ -292,6 +270,19 @@ Lastly restart Postgresql:
 
 ```
 root# service postgresql restart
+```
+
+To speed up large data imports, it's recommended to use slightly different settings for Postgresql.
+Especially AutoVacuum and the bigger MaintenanceWorkMem make the import process much faster. After
+you've changed the configuration, you have to restart Postgresql again. Don't forget to reset these
+settings to their defaults afterwards.
+
+```
+# settings for large data import
+maintenance_work_mem = 8GB
+autovacuum = off
+fsync = off
+full_page_writes = off
 ```
 
 ### WalkersGuide-Server config ###
@@ -350,19 +341,8 @@ chosen map area. For big areas like Europe this process can last one or two week
 is finished, the newly created database "osm_raw_europe" holds an exact copy of the OpenStreetMap
 map.
 
-To speed up the import process, it's recommended to turn off auto vacuum in the main config file of
-the Postgresql database server:
-
-```
-root# vim /etc/postgresql/9.3/main/postgresql.conf
-[...]
-# settings for large data import
-autovacuum = off
-fsync = off
-```
-
-Restart Postgresql after editing the config file and don't forget, to turn on auto vacuum again,
-after the import is done.
+To speed up the import process, it's recommended to use the different configuration parameters for
+Postgresql, which you can find in the previous section of this document.
 
 The OSM data underlies constant changes. The Geofabrik server offers daily differential update files
 to keep the local database up to date. Call the wrapper script with the "update_raw" parameter to
@@ -400,22 +380,26 @@ lasts at least two or three days. If the server must process routing queries at 
 query time will be much higher then normal. To prevent the slowdown for the user, it's possible to
 calculate the productive database at a second server and only transfer it, when done
 
-To accomplish this, you need two servers with the raw database and all other stuff installed. The raw
-databases must be at the same state and from the calculating server you need non interactive ssh access
-to the remote server, which processes the user queries. If all is installed at both servers, you
-start the creation process of the productive database at the calculation server with this command:
+To accomplish this, you have to do the following:
+
+1. Follow the installation guide for both servers. Server 1 (the calculation server) also needs
+   access over ssh to the server 2 (routing server). Add the respective data to the configuration.sh
+   file at server 1 (remote access section).
+
+2. On server 1, you start the creation of the raw and then the productive osm database.
+
+3. Then launch the following script on server 1 to dump the created productive database and transfer
+it to server 2 via rsync:
 
 ```
-./osm_database_wrapper.sh create_productive_and_transfer
+./osm_database_wrapper.sh transfer_productive
 ```
 
-The script checks the ssh connection to the remote server, compares the map state numbers and then
-also runs the "create_productive_database.sh" script. After this is done, it extracts the calculated
-tables, packs them into a SQL dump file and transfers the file to the remote server. Lastly it runs
-the script "create_productive_database_from_dumps.sh" at the remote server. This script copies the
-raw database and imports the dumped tables. So the most work is done at the calculation server. The
-remote server only must handle the import which only lasts a few hours. So it can be done at night
-and has much less impact at the routing service.
+4. After that script finished, switch to server 2 and restore the dump file into the database:
+
+```
+./osm_database_wrapper.sh create_productive_from_dumps
+```
 
 
 Usage
@@ -449,6 +433,6 @@ The server's answer is gzip compressed, so it's necessary to unpack it, before y
 data. Answer should look like:
 
 ```
-{"interface": 0.1, "warning": "", "map_version": "2014-07-18", "server": 0.1, "error": ""}
+{"interface": 1, "warning": "", "map_version": "2014-07-18", "server": "0.1.0", "error": ""}
 ```
 

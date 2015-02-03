@@ -88,6 +88,8 @@ remote_full_ssh_command="ssh $remote_ssh_options $remote_ssh_destination"
 remote_root_path="$working_folder"
 remote_script_path="$remote_root_path/scripts"
 remote_tmp_path="$remote_root_path/tmp"
+# maximum upload speed in kb/s, 0 = unlimited
+max_upload_speed=0
 
 # mail settings
 # the system wide "mail" command must be configured to send status mails

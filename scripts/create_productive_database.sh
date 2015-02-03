@@ -16,6 +16,13 @@ if [ ! -z "$result" ]; then
 fi
 
 # download new map, needed for route table creator
+# make sure, that your raw database is at the latest version, before proceed
+"$folder_name/update_raw_database.sh"
+rc=$?
+if [[ $rc != 0 ]]; then
+    echo "Raw database not at the latest version, can't proceed."
+    exit $rc
+fi
 if [ -f "$pbf_osm_file" ]; then
     rm -f "$pbf_osm_file"
     if [[ $? != 0 ]]; then

@@ -1,12 +1,15 @@
 Routing server
+
 v0.1.0, 01.09.2014::
     - Initial release
     src:
         - webserver interface = 2
+
 v0.1.1, 07.12.2014:
     src:
         - restricted length of log file name
         - Added OSM Node ID's to POI objects
+
 v0.2.0, 25.01.2015:
     PublicTransportInterface:
         - added new PublicTransportEnabler library
@@ -18,3 +21,8 @@ v0.2.0, 25.01.2015:
         - map data: changed from osm.bz2 to pbf
     other:
         - added an example configuration file for osm2po version 5.0, required for new way classes
+
+v0.2.1, 03.02.2015:
+    scripts:
+        - changed dump script: Whole database is transfered now (not only a few tables). So it's not
+          longer necessary to hold a raw osm database up to date at both servers
