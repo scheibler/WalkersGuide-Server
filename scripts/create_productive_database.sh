@@ -36,8 +36,6 @@ if [ ! -f "$pbf_osm_file" ]; then
     echo "Error: Could not download new map data"
     exit 22
 fi
-# copy map state file to provide the productive db version information
-cp "$map_state_file" "$productive_db_map_state_file"
 
 # convert to o5m
 if [ -f "$o5m_osm_file" ]; then
@@ -282,6 +280,13 @@ psql -h $server_address -U $user_name -d postgres -c "ALTER DATABASE $db_tmp_nam
 if [[ $? != 0 ]]; then
     echo -e "\nCan't rename temp database to active one"
     exit 27
+fi
+
+# copy map state file to provide the productive db version information
+cp "$map_state_file" "$productive_db_map_state_file"
+if [[ $? != 0 ]]; then
+    echo "Can't copy map state file"
+    exit 28
 fi
 
 echo -e "\nProductive database created at $(get_timestamp)"
