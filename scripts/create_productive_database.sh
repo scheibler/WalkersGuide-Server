@@ -88,25 +88,49 @@ if [ ! -d "$temp_folder/$db_prefix" ]; then
     exit 23
 fi
 
+# delete last 6 lines from sql script
+head -n -6 "$temp_folder/$db_prefix/$routing_table_name.sql" > "$temp_folder/$db_prefix/$routing_table_name.sql.new"
+if [[ $? != 0 ]]; then
+    echo "Can't delete last 6 lines from routing table sql script"
+    exit 23
+fi
+rm "$temp_folder/$db_prefix/$routing_table_name.sql"
+if [[ $? != 0 ]]; then
+    echo "Can't delete old routing table sql script"
+    exit 23
+fi
+mv "$temp_folder/$db_prefix/$routing_table_name.sql.new" "$temp_folder/$db_prefix/$routing_table_name.sql"
+if [[ $? != 0 ]]; then
+    echo "Can't rename new routing table sql script"
+    exit 23
+fi
+
 # append some lines to the created sql routing table import script
-commands="\n\
+commands="\
 -- enable timing\n\
 \\\timing\n\
--- create index\n\
-CREATE INDEX idx_"$routing_table_name"_osm_source_id ON $routing_table_name(osm_source_id);\n\
-CREATE INDEX idx_"$routing_table_name"_osm_target_id ON $routing_table_name(osm_target_id);\n\
-CREATE INDEX idx_"$routing_table_name"_geom_way  ON $routing_table_name USING GIST (geom_way);\n\
+\n\
 -- update kmh table\n\
 -- set all ways with foot = no to impassable\n\
 update $routing_table_name set kmh=8 where get_bit(flags::bit(8), 5) = 1;\n\
 -- set all cycleways with foot = yes to kategory 5\n\
 update $routing_table_name set kmh=5 where clazz = 17 and get_bit(flags::bit(8), 6) = 1;\n\
+-- set all tracks and paths with good smoothness, hard surface, grade1 or grade2 to class 4\n\
 update $routing_table_name set kmh=4 where \n\
     (get_bit(flags::bit(8), 4) = 1 or get_bit(flags::bit(8), 3) = 1 or get_bit(flags::bit(8), 2) = 1)\n\
     and (\n\
         (clazz = 12 or clazz = 13 or clazz = 14 or clazz = 15)\n\
         or (clazz = 17 and get_bit(flags::bit(8), 6) = 1)\n\
     );\n\
+\n\
+-- create index\n\
+ALTER TABLE $routing_table_name ADD CONSTRAINT pkey_"$routing_table_name" PRIMARY KEY(id);\n\
+CREATE INDEX idx_"$routing_table_name"_source ON $routing_table_name(source);\n\
+CREATE INDEX idx_"$routing_table_name"_target ON $routing_table_name(target);\n\
+CREATE INDEX idx_"$routing_table_name"_osm_source_id ON $routing_table_name(osm_source_id);\n\
+CREATE INDEX idx_"$routing_table_name"_osm_target_id ON $routing_table_name(osm_target_id);\n\
+CREATE INDEX idx_"$routing_table_name"_geom_way  ON $routing_table_name USING GIST (geom_way);\n\
+\n\
 -- cluster and analyse\n\
 cluster $routing_table_name USING idx_"$routing_table_name"_geom_way;\n\
 ANALYSE $routing_table_name;\n\
