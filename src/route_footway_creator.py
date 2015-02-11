@@ -91,64 +91,20 @@ class RouteFootwayCreator:
                     self.translator.translate("message", "process_canceled"))
 
         # create temporary routing table
-        distance_between_start_and_dest = geometry.distance_between_two_points(
+        boundaries = geometry.get_boundary_box_boundaries(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])
-        center_point = {
-                'lat' : (start_point['lat'] + dest_point['lat']) / 2,
-                'lon' : (start_point['lon'] + dest_point['lon']) / 2 }
         # create temp table
         DBControl().send_data("" \
                 "DROP TABLE IF EXISTS %s;" \
                 "CREATE TABLE %s AS SELECT * FROM %s LIMIT 0;" \
-                % (self.temp_routing_table_name, self.temp_routing_table_name, self.routing_table_name))
-        # create row list array
-        if distance_between_start_and_dest < 250:
-            row_list = [1000, 3000]
-        elif distance_between_start_and_dest < 500:
-            row_list = [2500, 7500]
-        elif distance_between_start_and_dest < 1000:
-            row_list = [5000, 15000]
-        elif distance_between_start_and_dest < 2000:
-            row_list = [10000, 30000]
-        elif distance_between_start_and_dest < 4000:
-            row_list = [25000, 75000]
-        else:
-            row_list = [50000, 150000]
-        # fill temp routing table
-        for number_of_rows in row_list:
-            t11 = time.time()
-            DBControl().send_data("" \
-                    "INSERT INTO %s " \
-                        "SELECT * from %s " \
-                        "ORDER BY geom_way <-> 'POINT(%f %f)'::geometry " \
-                        "limit %d;" \
-                    % (self.temp_routing_table_name, self.routing_table_name,
-                        center_point['lon'], center_point['lat'], number_of_rows) )
-            # get max distance from center
-            t12 = time.time()
-            result = DBControl().fetch_data("" \
-                    "SELECT ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography)::integer AS distance " \
-                        "from %s " \
-                        "ORDER BY geom_way <-> 'POINT(%f %f)'::geometry DESC " \
-                        "limit 1;" \
-                    % (center_point['lon'], center_point['lat'],
-                        self.temp_routing_table_name, center_point['lon'], center_point['lat']) )[0]
-            t13 = time.time()
-            self.route_logger.append_to_log(
-                    "rows: %d;   distance: %d / %d;   time: %.2f (%.2f / %.2f)" \
-                    % (number_of_rows, distance_between_start_and_dest,
-                        result['distance'], t13-t11, t12-t11, t13-t12), True)
-            if distance_between_start_and_dest < result['distance']:
-                break
-            # remove all lines from table
-            DBControl().send_data("TRUNCATE  TABLE %s" \
-                    % self.temp_routing_table_name)
-            # check for cancel command
-            if Config().has_session_id_to_remove(self.session_id):
-                DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
-                raise RouteFootwayCreator.FootwayRouteCreationError(
-                    self.translator.translate("message", "process_canceled"))
+                "INSERT INTO %s " \
+                    "SELECT * from %s " \
+                    "WHERE geom_way && ST_MakeEnvelope(%f, %f, %f, %f);"
+                % (self.temp_routing_table_name, self.temp_routing_table_name,
+                    self.routing_table_name, self.temp_routing_table_name,
+                    self.routing_table_name, boundaries['left'], boundaries['bottom'],
+                    boundaries['right'], boundaries['top']))
         # check if temp routing table is empty
         number_of_table_rows = DBControl().fetch_data("SELECT count(*) from %s" \
                 % self.temp_routing_table_name)[0]['count']
@@ -158,13 +114,13 @@ class RouteFootwayCreator:
             raise RouteFootwayCreator.FootwayRouteCreationError(
                 self.translator.translate("footway_creator", "foot_route_creation_failed"))
         # adapt cost column
-        t14 = time.time()
+        t11 = time.time()
         for index, weight in enumerate(self.way_class_weight_list):
             DBControl().send_data("" \
                     "UPDATE %s SET cost=km*%d where kmh = %d;" \
                     % (self.temp_routing_table_name, weight, (index+1)) )
-        # add table index
-        t15 = time.time()
+        # add table index and recreate source and target columns
+        t12 = time.time()
         DBControl().send_data("" \
                 "ALTER TABLE ONLY %s ADD CONSTRAINT pkey_%s PRIMARY KEY (id);" \
                 "CREATE INDEX idx_%s_source ON %s USING btree (source);" \
@@ -173,6 +129,7 @@ class RouteFootwayCreator:
                 "CREATE INDEX idx_%s_osm_target_id ON %s USING btree (osm_target_id);" \
                 "CREATE INDEX idx_%s_geom_way ON %s USING gist (geom_way);" \
                 "ALTER TABLE %s CLUSTER ON idx_%s_geom_way;" \
+                "SELECT recreate_vertex_of_routing_table('%s');" \
                 "ANALYZE %s;" \
                 % (self.temp_routing_table_name, self.temp_routing_table_name,
                     self.temp_routing_table_name, self.temp_routing_table_name,
@@ -181,10 +138,15 @@ class RouteFootwayCreator:
                     self.temp_routing_table_name, self.temp_routing_table_name,
                     self.temp_routing_table_name, self.temp_routing_table_name,
                     self.temp_routing_table_name, self.temp_routing_table_name,
-                    self.temp_routing_table_name))
+                    self.temp_routing_table_name, self.temp_routing_table_name))
         t2 = time.time()
-        self.route_logger.append_to_log("Temp table creation: %.2f (%.2f / %.2f / %.2f" \
-                % (t2-t1, t14-t1, t15-t14, t2-t15), True)
+        self.route_logger.append_to_log("Temp table creation: %.2f (%.2f / %.2f / %.2f\nnumber of rows = %d" \
+                % (t2-t1, t11-t1, t12-t11, t2-t12, number_of_table_rows), True)
+        # check for cancel command
+        if Config().has_session_id_to_remove(self.session_id):
+            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            raise RouteFootwayCreator.FootwayRouteCreationError(
+                    self.translator.translate("message", "process_canceled"))
 
         # get start and destination vertex
         start_vertex_list = self.get_nearest_vertex( start_point['lat'], start_point['lon'])
@@ -211,6 +173,11 @@ class RouteFootwayCreator:
         #self.route_logger.append_to_log(
         #        "start_vertex = %d, dest_vertex = %d, duration = %.2f" \
         #        % (start_vertex, dest_vertex, (t3-t2)), True)
+        # check for cancel command
+        if Config().has_session_id_to_remove(self.session_id):
+            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            raise RouteFootwayCreator.FootwayRouteCreationError(
+                    self.translator.translate("message", "process_canceled"))
 
         # route calculation
         raw_route = []
@@ -656,17 +623,14 @@ class RouteFootwayCreator:
 
     def get_nearest_vertex(self, lat, lon):
         start = time.time()
-        # get vertex of nearest big intersection
-        intersection_vertex = DBControl().fetch_data("" \
+        # get vertex of nearest big street
+        big_street_vertex = DBControl().fetch_data("" \
                 "SELECT source from %s " \
-                "where EXISTS(" \
-                    "select 1 from %s " \
-                    "where (id = osm_source_id or id = osm_target_id) " \
-                        "and number_of_streets_with_name > 1) = 't' " \
+                "WHERE clazz = ANY('{1,4,6}') AND osm_name != ''" \
                 "order by ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography) " \
                 "limit 1;" \
-                % (self.temp_routing_table_name, self.intersections_table_name,
-                    lon, lat))[0]['source']
+                % (self.temp_routing_table_name, lon, lat))[0]['source']
+        t1 = time.time()
         # get nearest way segments
         tuple_list = []
         nearest_lines = DBControl().fetch_data("\
@@ -674,6 +638,7 @@ class RouteFootwayCreator:
                 from %s WHERE cost > 0 \
                 ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
                 % (self.temp_routing_table_name, lon, lat))
+        t2 = time.time()
         for line in nearest_lines:
             # check, if source or target vertex of found edge is closer
             source_dist = geometry.distance_between_two_points_as_float(
@@ -688,6 +653,7 @@ class RouteFootwayCreator:
             #        % (index, line['id'], line['source'], line['target'], line['type'], line['osm_name'])
             #print "distances: %f / %f" % (source_dist, target_dist)
         tuple_list.sort(key = operator.attrgetter('distance'))
+        t3 = time.time()
         # filter duplicate vertex ids
         ids = []
         for index, tuple in enumerate(tuple_list):
@@ -696,7 +662,7 @@ class RouteFootwayCreator:
                 raw_route = DBControl().fetch_data("" \
                         "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                             "'select id, source, target, km as cost from %s', %d, %d, false, false)" \
-                        % (self.temp_routing_table_name, tuple.id, intersection_vertex))
+                        % (self.temp_routing_table_name, tuple.id, big_street_vertex))
                 if raw_route.__len__() > 0:
                     ids.append(tuple.id)
             # break if the next point is more than 250 meters away or if you already have
@@ -704,6 +670,7 @@ class RouteFootwayCreator:
             if tuple.distance > 250 or ids.__len__() > 9:
                 break
         end = time.time()
+        print "%.2f, %.2f, %.2f, %.2f" % (t1-start, t2-t1, t3-t2, end-t3)
         print "find vertex, time elapsed: %.2f" % (end-start)
         return ids
 

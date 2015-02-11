@@ -73,3 +73,24 @@ def convert_coordinate_to_int(coordinate):
     except ValueError as e:
         return None
 
+def get_boundary_box_boundaries(lat1, lon1, lat2, lon2):
+    boundaries = {}
+    lat_diff = math.fabs(lat1-lat2)
+    lon_diff = math.fabs(lon1-lon2)
+    if distance_between_two_points(lat1, lon1, lat2, lon2) > 2000:
+        lat_diff /= 2
+        lon_diff /= 2
+    if lat1 < lat2:
+        boundaries['bottom'] = lat1-lat_diff
+        boundaries['top'] = lat2+lat_diff
+    else:
+        boundaries['bottom'] = lat2-lat_diff
+        boundaries['top'] = lat1+lat_diff
+    if lon1 < lon2:
+        boundaries['left'] = lon1-lon_diff
+        boundaries['right'] = lon2+lon_diff
+    else:
+        boundaries['left'] = lon2-lon_diff
+        boundaries['right'] = lon1+lon_diff
+    return boundaries
+

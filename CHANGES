@@ -26,3 +26,11 @@ v0.2.1, 03.02.2015:
     scripts:
         - changed dump script: Whole database is transfered now (not only a few tables). So it's not
           longer necessary to hold a raw osm database up to date at both servers
+
+v0.2.2, 11.02.2015:
+    src:
+        - reworked temp routing table creation process
+    sql_functions:
+        - added a function which recreates source and target index of the temp routing table to
+          improve speed of pgrouting
+

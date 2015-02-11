@@ -21,3 +21,32 @@ BEGIN
     END LOOP;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION recreate_vertex_of_routing_table(regclass)
+RETURNS void
+AS $$
+DECLARE
+    row RECORD;
+    vertex_storage hstore;
+    new_vertex int;
+BEGIN
+    vertex_storage := ''::hstore;
+    new_vertex := 1;
+    FOR row in EXECUTE FORMAT('SELECT id, source, target FROM %I', $1)
+    LOOP
+        IF NOT vertex_storage ? row.source::text THEN
+            vertex_storage = vertex_storage || (row.source::text => new_vertex::text);
+            new_vertex := new_vertex + 1;
+        END IF;
+        IF NOT vertex_storage ? row.target::text THEN
+            vertex_storage = vertex_storage || (row.target::text => new_vertex::text);
+            new_vertex := new_vertex + 1;
+        END IF;
+    END LOOP;
+    FOR row IN SELECT key, value FROM EACH(vertex_storage)
+    LOOP
+        EXECUTE FORMAT('UPDATE %I SET source=$1 WHERE source = $2', $1) USING row.value::int, row.key::int;
+        EXECUTE FORMAT('UPDATE %I SET target=$1 WHERE target = $2', $1) USING row.value::int, row.key::int;
+    END LOOP;
+END;
+$$ LANGUAGE plpgsql;
