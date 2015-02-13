@@ -35,11 +35,11 @@ BEGIN
     FOR row in EXECUTE FORMAT('SELECT id, source, target FROM %I', $1)
     LOOP
         IF NOT vertex_storage ? row.source::text THEN
-            vertex_storage = vertex_storage || (row.source::text => new_vertex::text);
+            vertex_storage = vertex_storage || hstore(row.source::text, new_vertex::text);
             new_vertex := new_vertex + 1;
         END IF;
         IF NOT vertex_storage ? row.target::text THEN
-            vertex_storage = vertex_storage || (row.target::text => new_vertex::text);
+            vertex_storage = vertex_storage || hstore(row.target::text, new_vertex::text);
             new_vertex := new_vertex + 1;
         END IF;
     END LOOP;

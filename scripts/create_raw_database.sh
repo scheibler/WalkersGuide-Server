@@ -7,15 +7,19 @@ source "$folder_name/helper_functions.sh"
 
 echo "Started creation process at $(get_timestamp)"
 # first, clean maps and temp folder
-rm -R -f $maps_folder/*
-if [[ $? != 0 ]]; then
-    echo "Could not delete old data in the maps folder"
-    exit 31
+if [ "$(ls -A $maps_folder 2> /dev/null)" != "" ]; then
+    rm -R -f $maps_folder/*
+    if [[ $? != 0 ]]; then
+        echo "Could not delete old data in the maps folder"
+        exit 31
+    fi
 fi
-rm -R -f $temp_folder/*
-if [[ $? != 0 ]]; then
-    echo "Could not delete old data in the temp folder"
-    exit 31
+if [ "$(ls -A $temp_folder 2> /dev/null)" != "" ]; then
+    rm -R -f $temp_folder/*
+    if [[ $? != 0 ]]; then
+        echo "Could not delete old data in the temp folder"
+        exit 31
+    fi
 fi
 
 # prepare for differential map updates
@@ -52,10 +56,21 @@ fi
 # create new raw database
 echo -e "\nCreate new raw osm database -- started at $(get_timestamp)"
 # delete old one if available
-if [ ! -z "$(psql -h $server_address -U $user_name -l | grep -i $db_raw_name)" ]; then
+result=$(psql -h $server_address -U $user_name -l | grep -i "$db_raw_name ")
+if [ ! -z "$result" ]; then
+    # end all potential active connections to the raw database
+    postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
+    if (( $postgresql_version < 92)); then
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(procpid) from pg_stat_activity where datname = '$db_raw_name';"
+    else
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db_raw_name';"
+    fi
+    # delete
     psql -h $server_address -U $user_name -d postgres -c "DROP DATABASE $db_raw_name;"
     if [[ $? != 0 ]]; then
-        exit 32
+        exit 33
     fi
 fi
 # create new db

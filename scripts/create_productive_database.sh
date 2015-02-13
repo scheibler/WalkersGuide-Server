@@ -6,9 +6,21 @@ source "$folder_name/configuration.sh"
 source "$folder_name/helper_functions.sh"
 
 # create new productive database
-# delete old one if available
+echo "Create productive database -- started at $(get_timestamp)"
+
+# delete old temp database if available
 result=$(psql -h $server_address -U $user_name -l | grep -i "$db_tmp_name ")
 if [ ! -z "$result" ]; then
+    # end all potential active connections to the backup database
+    postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
+    if (( $postgresql_version < 92)); then
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(procpid) from pg_stat_activity where datname = '$db_tmp_name';"
+    else
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db_tmp_name';"
+    fi
+    # delete
     psql -h $server_address -U $user_name -d postgres -c "DROP DATABASE $db_tmp_name;"
     if [[ $? != 0 ]]; then
         exit 21
@@ -159,10 +171,12 @@ fi
 # create poi tables
 echo -e "\nCreate poi dumps -- started at $(get_timestamp)"
 # clean temp folder
-rm -R -f $temp_folder/*
-if [[ $? != 0 ]]; then
-    echo "Could not clear temp folder"
-    exit 25
+if [ "$(ls -A $temp_folder 2> /dev/null)" != "" ]; then
+    rm -R -f $temp_folder/*
+    if [[ $? != 0 ]]; then
+        echo "Could not delete old data in the local temp folder"
+        exit 25
+    fi
 fi
 old_directory=$(pwd)
 cd "$temp_folder"
@@ -237,44 +251,51 @@ cd "$old_directory"
 
 # clean up new database
 echo -e "\nanalyse database -- started at $(get_timestamp)"
-psql -h $server_address -U $user_name -d $db_tmp_name -c "ANALYZE;"
+psql -h $server_address -U $user_name -d $db_tmp_name -c "VACUUM ANALYZE;"
 if [[ $? != 0 ]]; then
     echo "Error during analyse"
     exit 26
 fi
 
-# delete old backup and move current db to backup
 echo -e "\nrename databases -- started at $(get_timestamp)"
-# first, end all active connections to the database
-postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
-if (( $postgresql_version < 92)); then
-    psql -h $server_address -U $user_name -d postgres \
-        -c "select pg_terminate_backend(procpid) from pg_stat_activity where datname = '$db_active_name';"
-else
-    psql -h $server_address -U $user_name -d postgres \
-        -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db_active_name';"
-fi
-
 # delete previous backup database if available
 result=$(psql -h $server_address -U $user_name -l | grep -i "$db_backup_name")
 if [ ! -z "$result" ]; then
+    # end all potential active connections to the backup database
+    postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
+    if (( $postgresql_version < 92)); then
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(procpid) from pg_stat_activity where datname = '$db_backup_name';"
+    else
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db_backup_name';"
+    fi
+    # delete
     psql -h $server_address -U $user_name -d postgres -c "DROP DATABASE $db_backup_name;"
     if [[ $? != 0 ]]; then
         echo -e "\nCan't delete old backup database"
         exit 27
     fi
 fi
-
 # rename previous current db to backup db
 result=$(psql -h $server_address -U $user_name -l | grep -i "$db_active_name ")
 if [ ! -z "$result" ]; then
+    # end all active connections to the active database
+    postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
+    if (( $postgresql_version < 92)); then
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(procpid) from pg_stat_activity where datname = '$db_active_name';"
+    else
+        psql -h $server_address -U $user_name -d postgres \
+            -c "select pg_terminate_backend(pid) from pg_stat_activity where datname = '$db_active_name';"
+    fi
+    # rename
     psql -h $server_address -U $user_name -d postgres -c "ALTER DATABASE $db_active_name RENAME TO $db_backup_name;"
     if [[ $? != 0 ]]; then
         echo -e "\nCan't rename old active database to backup database"
         exit 27
     fi
 fi
-
 # rename temp db to active db
 psql -h $server_address -U $user_name -d postgres -c "ALTER DATABASE $db_tmp_name RENAME TO $db_active_name;"
 if [[ $? != 0 ]]; then

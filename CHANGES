@@ -28,6 +28,8 @@ v0.2.1, 03.02.2015:
           longer necessary to hold a raw osm database up to date at both servers
 
 v0.2.2, 11.02.2015:
+    scripts:
+        - dumped database file is transmitted in 2 GB parts now
     src:
         - reworked temp routing table creation process
     sql_functions:
