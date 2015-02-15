@@ -55,6 +55,25 @@ def distance_between_two_points_as_float(lat1, lon1, lat2, lon2):
     c = 2 * math.asin(math.sqrt(a))
     return 6367 * c * 1000
 
+def get_center_point(lat1, lon1, lat2, lon2):
+    center_point = {}
+    if lat1 < lat2:
+        center_point['lat'] = lat1 + math.fabs(lat1-lat2)/2
+    else:
+        center_point['lat'] = lat2 + math.fabs(lat1-lat2)/2
+    if lon1 < lon2:
+        center_point['lon'] = lon1 + math.fabs(lon1-lon2)/2
+    else:
+        center_point['lon'] = lon2 + math.fabs(lon1-lon2)/2
+    return center_point
+
+def get_boundary_box(lat, lon, radius):
+    lat_diff = radius / distance_between_two_points_as_float(
+            lat, lon, lat+1.0, lon)
+    lon_diff = radius / distance_between_two_points_as_float(
+            lat, lon, lat, lon+1.0)
+    return {'bottom':lat-lat_diff, 'top':lat+lat_diff, 'left':lon-lon_diff, 'right':lon+lon_diff}
+
 def convert_coordinate_to_float(coordinate):
     if type(coordinate) == type(0.0):
         return coordinate
@@ -72,25 +91,4 @@ def convert_coordinate_to_int(coordinate):
         return int(coordinate*1000000)
     except ValueError as e:
         return None
-
-def get_boundary_box_boundaries(lat1, lon1, lat2, lon2):
-    boundaries = {}
-    lat_diff = math.fabs(lat1-lat2)
-    lon_diff = math.fabs(lon1-lon2)
-    if distance_between_two_points(lat1, lon1, lat2, lon2) > 2000:
-        lat_diff /= 2
-        lon_diff /= 2
-    if lat1 < lat2:
-        boundaries['bottom'] = lat1-lat_diff
-        boundaries['top'] = lat2+lat_diff
-    else:
-        boundaries['bottom'] = lat2-lat_diff
-        boundaries['top'] = lat1+lat_diff
-    if lon1 < lon2:
-        boundaries['left'] = lon1-lon_diff
-        boundaries['right'] = lon2+lon_diff
-    else:
-        boundaries['left'] = lon2-lon_diff
-        boundaries['right'] = lon1+lon_diff
-    return boundaries
 

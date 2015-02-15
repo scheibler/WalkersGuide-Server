@@ -91,9 +91,14 @@ class RouteFootwayCreator:
                     self.translator.translate("message", "process_canceled"))
 
         # create temporary routing table
-        boundaries = geometry.get_boundary_box_boundaries(
+        distance_between_start_and_destination = geometry.distance_between_two_points(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])
+        center_point = geometry.get_center_point(
+                start_point['lat'], start_point['lon'],
+                dest_point['lat'], dest_point['lon'])
+        boundaries = geometry.get_boundary_box(center_point['lat'], center_point['lon'],
+                distance_between_start_and_destination)
         # create temp table
         DBControl().send_data("" \
                 "DROP TABLE IF EXISTS %s;" \

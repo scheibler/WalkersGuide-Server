@@ -15,16 +15,15 @@ class POI:
         self.hide_log_messages = hide_log_messages
 
     def get_poi(self, lat, lon, radius, tag_list, search=""):
-        # tags and limits
+        ts = time.time()
+        poi_list = []
+
+        # tags, boundary box and search strings
         tags = self.create_tags(tag_list)
-        limits = {}
-        limits['station'] = [25, 100, 250, 500, 1000]
-        limits['intersection'] = [250, 1000, 2500, 5000, 10000]
-        limits['poi'] = [500, 2500, 7500, 20000, 40000]
-        limits['traffic_signals'] = [25, 100, 250, 500, 1000]
-    
-        # prepare search strings
         if search != "":
+            # if we search for something, choose a 10 km radius
+            boundaries = geometry.get_boundary_box(lat, lon, 10000)
+            # prepare search strings
             search = search.replace(" ", "%").lower()
             search_poi = "("
             search_poi += "LOWER(tags->'name') LIKE '%%%s%%' or " % search
@@ -36,72 +35,31 @@ class POI:
             search_traffic_signals = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
             search_other = "LOWER(name) LIKE '%%%s%%'" % search
         else:
+            boundaries = geometry.get_boundary_box(lat, lon, radius)
             search_poi = ""
             search_traffic_signals = ""
             search_other = ""
 
-        # start querys
-        poi_list = []
-        ts = time.time()
         # intersections
         if tags['intersection'] != "":
             t1 = time.time()
+            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
+                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
             if tags['intersection'] == "name":
-                # all bigger intersections
-                if search_poi != "":
-                    where_clause = "number_of_streets_with_name > 1 and %s" % (search_other)
-                else:
-                    where_clause = "number_of_streets_with_name > 1 \
-                            and ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" % (lon, lat, radius)
+                # only bigger intersections
+                where_clause += " AND number_of_streets_with_name > 1"
             elif tags['intersection'] == "other":
-                # where clause for nameless intersections
-                if search_poi != "":
-                    where_clause = "number_of_streets_with_name <= 1 and %s" % (search_other)
-                else:
-                    where_clause = "number_of_streets_with_name <= 1 \
-                            and ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" % (lon, lat, radius)
-            else:
-                # all intersections
-                if search_poi != "":
-                    where_clause = "%s" % (search_other)
-                else:
-                    where_clause = "ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" \
-                            % (lon, lat, radius)
-            # find the smallest limit for the given radius
-            smallest_limit = limits['intersection'][-1]
-            if search_poi == "":
-                for limit in limits['intersection']:
-                    result = DBControl().fetch_data("\
-                            with closest_intersections as ( \
-                                SELECT * from %s ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                                LIMIT %d \
-                            ) \
-                            SELECT round(st_distance(geom::geography, 'point(%f %f)'::geography)) AS distance \
-                                from closest_intersections ORDER BY geom <-> 'point(%f %f)' DESC \
-                                LIMIT 1" \
-                            % (Config().get_param("intersection_table"), lon, lat, limit,
-                                lon, lat, lon, lat))[0]
-                    if result['distance'] > radius:
-                        smallest_limit = limit
-                        if self.hide_log_messages == False:
-                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
-                        break
-                    # check for cancel command
-                    if Config().has_session_id_to_remove(self.session_id):
-                        Config().confirm_removement_of_session_id(self.session_id)
-                        return
+                # only smaller intersections
+                where_clause += " AND number_of_streets_with_name <= 1"
+            # search for something?
+            if search_poi != "":
+                where_clause += " AND %s" % search_other
             # query data
-            # print "where = %s" % where_clause
-            result = DBControl().fetch_data("\
-                    WITH nearest_intersections AS( \
-                        SELECT * from %s ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                        LIMIT %d \
-                    ) \
-                    SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets, \
-                        number_of_streets_with_name, number_of_traffic_signals \
-                        from nearest_intersections where %s" \
-                    % (Config().get_param("intersection_table"), lon, lat,
-                        smallest_limit, where_clause))
+            result = DBControl().fetch_data("" \
+                    "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets, " \
+                            "number_of_streets_with_name, number_of_traffic_signals " \
+                        "FROM %s WHERE %s;"
+                    % (Config().get_param("intersection_table"), where_clause))
             t2 = time.time()
             for row in result:
                 intersection_id = int(row['id'])
@@ -123,42 +81,15 @@ class POI:
         # stations
         if tags['station'] != "":
             t1 = time.time()
-            smallest_limit = limits['station'][-1]
+            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f) AND %s" \
+                    % (boundaries['left'], boundaries['bottom'], boundaries['right'],
+                        boundaries['top'], tags['station'])
             if search_poi != "":
-                where_clause = "%s and %s" % (tags['station'], search_poi)
-            else:
-                where_clause = "%s and ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" \
-                        % (tags['station'], lon, lat, radius)
-                # find the smallest limit for the given radius
-                for limit in limits['station']:
-                    result = DBControl().fetch_data("\
-                            with closest_stations as ( \
-                                SELECT * from stations ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                                LIMIT %d \
-                            ) \
-                            SELECT round(st_distance(geom::geography, 'point(%f %f)'::geography)) AS distance \
-                                from closest_stations ORDER BY geom <-> 'point(%f %f)' DESC \
-                                LIMIT 1" \
-                            % (lon, lat, limit, lon, lat, lon, lat))[0]
-                    if result['distance'] > radius:
-                        smallest_limit = limit
-                        if self.hide_log_messages == False:
-                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
-                        break
-                    # check for cancel command
-                    if Config().has_session_id_to_remove(self.session_id):
-                        Config().confirm_removement_of_session_id(self.session_id)
-                        return
-            # print "where = %s" % where_clause
-            result = DBControl().fetch_data("\
-                    WITH nearest_poi AS( \
-                        SELECT * from stations \
-                        ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                        LIMIT %d \
-                    ) \
-                    SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
-                        number_of_entrances, number_of_lines from nearest_poi where %s" \
-                    % (lon, lat, smallest_limit, where_clause))
+                where_clause += " AND %s" % search_poi
+            result = DBControl().fetch_data("" \
+                    "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
+                            "outer_building_id, number_of_entrances, number_of_lines " \
+                        "FROM stations WHERE %s;" % where_clause)
             t2 = time.time()
             for row in result:
                 station_id = int(row['id'])
@@ -182,41 +113,15 @@ class POI:
         # poi
         if tags['poi'] != "":
             t1 = time.time()
-            smallest_limit = limits['poi'][-1]
+            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f) AND %s" \
+                    % (boundaries['left'], boundaries['bottom'], boundaries['right'],
+                        boundaries['top'], tags['poi'])
             if search_poi != "":
-                where_clause = "%s and %s" % (tags['poi'], search_poi)
-            else:
-                where_clause = "%s and ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" \
-                        % (tags['poi'], lon, lat, radius)
-                for limit in limits['poi']:
-                    result = DBControl().fetch_data("\
-                            with closest_poi AS ( \
-                                SELECT * from poi ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                                LIMIT %d \
-                            ) \
-                            SELECT round(st_distance(geom::geography, 'point(%f %f)'::geography)) AS distance \
-                                from closest_poi ORDER BY geom <-> 'point(%f %f)' DESC \
-                                LIMIT 1" \
-                            % (lon, lat, limit, lon, lat, lon, lat))[0]
-                    if result['distance'] > radius:
-                        smallest_limit = limit
-                        if self.hide_log_messages == False:
-                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
-                        break
-                    # check for cancel command
-                    if Config().has_session_id_to_remove(self.session_id):
-                        Config().confirm_removement_of_session_id(self.session_id)
-                        return
-            # print "where = %s" % where_clause
-            result = DBControl().fetch_data("\
-                    WITH nearest_poi AS( \
-                        SELECT * from poi \
-                        ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                        LIMIT %d \
-                    ) \
-                    SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, outer_building_id, \
-                        number_of_entrances from nearest_poi where %s" \
-                    % (lon, lat, smallest_limit, where_clause))
+                where_clause += " AND %s" % search_poi
+            result = DBControl().fetch_data("" \
+                    "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
+                            "outer_building_id, number_of_entrances " \
+                        "FROM poi WHERE %s;" % where_clause)
             t2 = time.time()
             for row in result:
                 poi_id = int(row['id'])
@@ -239,40 +144,13 @@ class POI:
         # traffic signals
         if tags['traffic_signals'] != "":
             t1 = time.time()
-            smallest_limit = limits['traffic_signals'][-1]
-            if search_traffic_signals != "":
-                where_clause = search_traffic_signals
-            else:
-                where_clause = "ST_Distance(geom::geography, 'POINT(%f %f)'::geography) < %d" \
-                        % (lon, lat, radius)
-                for limit in limits['traffic_signals']:
-                    result = DBControl().fetch_data("\
-                            with closest_traffic_signals AS ( \
-                                SELECT * from traffic_signals ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                                LIMIT %d \
-                            ) \
-                            SELECT round(st_distance(geom::geography, 'point(%f %f)'::geography)) AS distance \
-                                from closest_traffic_signals ORDER BY geom <-> 'point(%f %f)' DESC \
-                                LIMIT 1" \
-                            % (lon, lat, limit, lon, lat, lon, lat))[0]
-                    if result['distance'] > radius:
-                        smallest_limit = limit
-                        if self.hide_log_messages == False:
-                            print "limit = %d, distance = %d" % (smallest_limit, result['distance'])
-                        break
-                    # check for cancel command
-                    if Config().has_session_id_to_remove(self.session_id):
-                        Config().confirm_removement_of_session_id(self.session_id)
-                        return
-            result = DBControl().fetch_data("\
-                    WITH nearest_traffic_signals AS( \
-                        SELECT * from traffic_signals \
-                        ORDER BY geom <-> 'POINT(%f %f)'::geometry \
-                        LIMIT %d \
-                    ) \
-                    SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name \
-                    from nearest_traffic_signals where %s" \
-                    % (lon, lat, smallest_limit, where_clause))
+            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
+                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
+            if search_poi != "":
+                where_clause += " AND %s" % search_traffic_signals
+            result = DBControl().fetch_data("" \
+                    "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name " \
+                        "FROM traffic_signals WHERE %s;" % where_clause)
             t2 = time.time()
             for row in result:
                 signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],

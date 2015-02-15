@@ -77,23 +77,16 @@ fi
 echo -e "\ntransfer to remote server via rsync -- started at $(get_timestamp)"
 i=0
 max_restarts=3
-last_exit_code=1
 while [ $i -le $max_restarts ]
 do
-    i=$(( $i + 1 ))
-    if ((max_upload_speed == 0)); then
-        rsync --archive --partial -e "ssh $remote_ssh_options" \
-            "$temp_folder/" $remote_ssh_destination:$remote_tmp_path/
-    else
-        rsync --archive --bwlimit=$max_upload_speed --partial -e "ssh $remote_ssh_options" \
-            "$temp_folder/" $remote_ssh_destination:$remote_tmp_path/
-    fi
-    last_exit_code=$?
-    if [ $last_exit_code -eq 0 ]; then
+    rsync --append --archive --bwlimit=$max_upload_speed --partial -e "ssh $remote_ssh_options" \
+        "$temp_folder/" $remote_ssh_destination:$remote_tmp_path/
+    if [ $? -eq 0 ]; then
         echo "Productive database transfered successfully at $(get_timestamp). Please start import script at the destination machine to import dump"
         exit 0
     fi
-    sleep 30
+    sleep 300
+    i=$(( $i + 1 ))
 done
 echo "Error during dump file upload at $(get_timestamp)"
 exit 58
