@@ -21,7 +21,7 @@ class POI:
         # tags, boundary box and search strings
         tags = self.create_tags(tag_list)
         if search != "":
-            # if we search for something, choose a 10 km radius
+            # if we search for something, choose a 50 km radius
             boundaries = geometry.get_boundary_box(lat, lon, 10000)
             # prepare search strings
             search = search.replace(" ", "%").lower()
@@ -651,7 +651,7 @@ class POI:
             if t == "tourism":
                 tags['poi'] += " or (" \
                         "tags->'amenity' = " \
-                            "ANY('{\"crypt\", \"place_of_worship\"}') or " \
+                            "ANY('{\"crypt\", \"place_of_worship\", \"shelter\"}') or " \
                         "tags->'tourism' != '' or " \
                         "tags->'natural' = 'water' or " \
                         "tags->'historic' != ''" \

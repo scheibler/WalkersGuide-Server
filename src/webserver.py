@@ -68,6 +68,9 @@ class RoutingWebService():
         for part in source_route:
             if part['type'] in ["way_point", "intersection", "poi", "station"]:
                 index += 1
+                if part.has_key("turn"):
+                    part.__delitem__("turn")
+                    print "turn deleted"
             elif part['type'] in ["footway", "transport"]:
                 index -= 1
             else:
@@ -113,11 +116,14 @@ class RoutingWebService():
         # create route logger object
         route_logger = RouteLogger("routes", "%s-%s" % (source_route[0]['name'].replace(" ", "."), \
                 source_route[-1]['name'].replace(" ", ".") ))
+        # and append the source route
+        route_logger.append_to_log("\n----- start of source route -----")
+        route_logger.append_to_log( json.dumps( source_route, indent=4, encoding="utf-8") \
+                + "\n----- end of source route -----\n")
 
         # get a route
         rfc = RouteFootwayCreator(session_id, route_logger, translator,
                 options['route_factor'], allowed_way_classes)
-        return_tuple['route'].append(source_route[0])
         for i in range(1, source_route.__len__(), 2):
             if source_route[i]['type'] == "footway" and source_route[i]['sub_type'] == "footway_place_holder":
                 try:
@@ -128,26 +134,33 @@ class RoutingWebService():
                     return_tuple['route'] = []
                     return_tuple['error'] = "%s" % e
                     return helper.zip_data(return_tuple)
-                route_part.__delitem__(0)
+                if return_tuple['route'].__len__() > 0:
+                    route_part.__delitem__(0)
                 return_tuple['route'] += route_part
             else:
+                if return_tuple['route'].__len__() == 0:
+                    return_tuple['route'].append(source_route[i-1])
                 return_tuple['route'].append(source_route[i])
                 return_tuple['route'].append(source_route[i+1])
-        # check for missing turn values at intersections
+        # delete start point and first route segment, if it's a nameless one, just added as place holder
+        if return_tuple['route'].__len__() >= 3 \
+                and return_tuple['route'][1]['sub_type'] == "":
+            print "deleted placeholder start segment %s" % return_tuple['route'][1]
+            return_tuple['route'].__delitem__(0)
+            return_tuple['route'].__delitem__(0)
+        # check for missing turn values at intersections and poi
         # for example this can happen, if an intersection is a intermediate destination of a source route
         for i in range(2, return_tuple['route'].__len__()-2, 2):
-            if return_tuple['route'][i]['type'] == "intersection" \
-                    and return_tuple['route'][i].has_key("turn") == False \
+            if return_tuple['route'][i].has_key("turn") == False \
                     and return_tuple['route'][i-1].has_key("bearing") == True \
                     and return_tuple['route'][i+1].has_key("bearing") == True:
-                # get turn between last and next segment in degree
-                turn = return_tuple['route'][i+1]['bearing'] - return_tuple['route'][i-1]['bearing']
-                if turn < 0:
-                    turn += 360
-                return_tuple['route'][i]['turn'] = turn
+                return_tuple['route'][i]['turn'] = geometry.turn_between_two_segments(
+                        return_tuple['route'][i+1]['bearing'], return_tuple['route'][i-1]['bearing'])
+                print "new turn in webserver = %d" % return_tuple['route'][i]['turn']
         return_tuple['description'] = rfc.get_route_description( return_tuple['route'] )
-        route_logger.append_to_log("\n----- result -----\n")
-        route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") + "\n----- end of route -----\n")
+        route_logger.append_to_log("\n----- start of result route -----")
+        route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") \
+                + "\n----- end of result route -----\n")
 
         # delete session id
         Config().confirm_removement_of_session_id(session_id)
@@ -246,7 +259,7 @@ class RoutingWebService():
         route_logger = RouteLogger("routes", "%s-way_id.%s"
                 % (start_point['name'].replace(" ", "."), options['way_id']))
         rfc = RouteFootwayCreator(session_id, route_logger, translator, 1.0,
-                ["streets", "paved_ways", "unpaved_ways", "steps"])
+                ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "steps"])
         try:
             route = rfc.follow_this_way(start_point,
                     options['way_id'], options['bearing'], add_all_intersections)
@@ -734,7 +747,7 @@ class RoutingWebService():
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         return_tuple['interface'] = 3
-        return_tuple['server'] = "0.2.2"
+        return_tuple['server'] = "0.2.3"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

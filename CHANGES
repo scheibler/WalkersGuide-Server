@@ -36,3 +36,7 @@ v0.2.2, 11.02.2015:
         - added a function which recreates source and target index of the temp routing table to
           improve speed of pgrouting
 
+v0.2.3, 11.03.2015:
+    src:
+        - updated add_point_to_route function: Recognizes zigzag in routes now
+

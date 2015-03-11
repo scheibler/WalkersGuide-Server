@@ -38,6 +38,12 @@ def bearing_between_two_points(lat1, lon1, lat2, lon2):
     compass_bearing = (initial_bearing + 360) % 360
     return int(compass_bearing)
 
+def turn_between_two_segments(bearing_new, bearing_old):
+    turn = bearing_new - bearing_old
+    if turn < 0:
+        turn += 360
+    return turn
+
 def distance_between_two_points(lat1, lon1, lat2, lon2):
     return int(distance_between_two_points_as_float(lat1, lon1, lat2, lon2))
 

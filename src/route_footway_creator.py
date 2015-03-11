@@ -7,7 +7,7 @@ from translator import Translator
 from config import Config
 from poi import POI
 import geometry
-import time, json, operator, re
+import time, json, operator, re, math
 
 class RouteFootwayCreator:
 
@@ -77,6 +77,12 @@ class RouteFootwayCreator:
         for index, weight in enumerate(self.way_class_weight_list):
             self.way_class_weight_list[index] = 100 - weight
         self.route_logger.append_to_log(self.way_class_weight_list, True)
+        # define the minimum temp table radius
+        if allowed_way_classes.__contains__("paved_ways") \
+                or allowed_way_classes.__contains__("unpaved_ways"):
+            self.minimum_radius = 250
+        else:
+            self.minimum_radius = 500
 
     def find_footway_route(self, start_point, dest_point):
         print "footway route creator"
@@ -94,11 +100,12 @@ class RouteFootwayCreator:
         distance_between_start_and_destination = geometry.distance_between_two_points(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])
+        print "radius = %d" % distance_between_start_and_destination
         center_point = geometry.get_center_point(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])
         boundaries = geometry.get_boundary_box(center_point['lat'], center_point['lon'],
-                distance_between_start_and_destination)
+                self.minimum_radius + int(distance_between_start_and_destination / 2))
         # create temp table
         DBControl().send_data("" \
                 "DROP TABLE IF EXISTS %s;" \
@@ -175,9 +182,6 @@ class RouteFootwayCreator:
                 raise RouteFootwayCreator.FootwayRouteCreationError(
                         self.translator.translate("message", "process_canceled"))
         t3 = time.time()
-        #self.route_logger.append_to_log(
-        #        "start_vertex = %d, dest_vertex = %d, duration = %.2f" \
-        #        % (start_vertex, dest_vertex, (t3-t2)), True)
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
             DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
@@ -199,10 +203,10 @@ class RouteFootwayCreator:
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
-                                start_vertex_list[x], dest_vertex_list[y]))
+                                start_vertex_list[x].point_id, dest_vertex_list[y].point_id))
                     if raw_route.__len__() > 0:
-                        start_vertex = start_vertex_list[x]
-                        dest_vertex = dest_vertex_list[y]
+                        start_vertex_tuple = start_vertex_list[x]
+                        dest_vertex_tuple = dest_vertex_list[y]
                 if y < start_vertex_list.__len__() and x < dest_vertex_list.__len__() \
                         and x != y and raw_route.__len__() == 0:
                     print "%d  %d ." % (y, x)
@@ -210,10 +214,10 @@ class RouteFootwayCreator:
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
-                                start_vertex_list[y], dest_vertex_list[x]))
+                                start_vertex_list[y].point_id, dest_vertex_list[x].point_id))
                     if raw_route.__len__() > 0:
-                        start_vertex = start_vertex_list[y]
-                        dest_vertex = dest_vertex_list[x]
+                        start_vertex_tuple = start_vertex_list[y]
+                        dest_vertex_tuple = dest_vertex_list[x]
                 if Config().has_session_id_to_remove(self.session_id):
                     DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
                     raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -223,7 +227,7 @@ class RouteFootwayCreator:
                     "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                         "'select id, source, target, km AS cost from %s', %d, %d, false, false)" \
                     % (self.temp_routing_table_name,
-                        start_vertex_list[0], dest_vertex_list[0]))
+                        start_vertex_list[0].point_id, dest_vertex_list[0].point_id))
             DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             if raw_route.__len__() > 0:
                 raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -242,7 +246,7 @@ class RouteFootwayCreator:
     
             # exception for the first route segment
             # add start point of route first
-            if part['source'] == start_vertex:
+            if part['source'] == start_vertex_tuple.point_id:
                 print "start point added"
                 # check if current point is an intersection
                 next_point = self.poi.create_intersection_by_id(part['osm_source_id'])
@@ -250,7 +254,7 @@ class RouteFootwayCreator:
                     next_point = self.poi.create_way_point_by_id(part['osm_source_id'])
                 self.route.append(next_point)
                 last_target_id = part['source']
-            elif part['target'] == start_vertex:
+            elif part['target'] == start_vertex_tuple.point_id:
                 print "target point added"
                 # check if current point is an intersection
                 next_point = self.poi.create_intersection_by_id(part['osm_target_id'])
@@ -273,6 +277,10 @@ class RouteFootwayCreator:
                 reverse = True
                 last_target_id = part['source']
             self.add_point_to_route(next_point, part['osm_id'], reverse)
+            try:
+                self.route[-2]['way_class'] = part['kmh']
+            except IndexError as e:
+                pass
             # check for cancel command
             if Config().has_session_id_to_remove(self.session_id):
                 raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -293,132 +301,73 @@ class RouteFootwayCreator:
             DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             return self.route
 
-        # else add start and destination points
-        # start
-        distance_start_p0 = geometry.distance_between_two_points( start_point['lat'], start_point['lon'], self.route[0]['lat'], self.route[0]['lon'])
+        # add start point
+        distance_start_p0 = geometry.distance_between_two_points(
+                start_point['lat'], start_point['lon'],
+                self.route[0]['lat'], self.route[0]['lon'])
+        bearing_start_p0 = geometry.bearing_between_two_points(
+                start_point['lat'], start_point['lon'],
+                self.route[0]['lat'], self.route[0]['lon'])
+        bearing_p0_p1 = self.route[1]['bearing']
+        turn = geometry.turn_between_two_segments(
+                bearing_p0_p1, bearing_start_p0)
+        print "start: turn = %d, distance = %d" % (turn, distance_start_p0)
         if distance_start_p0 <= 5:
-            self.route.__delitem__(0)
-            self.route.insert(0, start_point)
+            print "small dist, replaced start point"
+            self.route[0] = start_point
+        elif turn >= 158 and turn <= 202:
+            print "replaced first intersection with start point"
+            self.route[1]['distance'] -= distance_start_p0
+            self.route[0] = start_point
+        elif self.important_intersection(self.route[0]) == False \
+                and (turn <= 22 or turn >= 338):
+            print "deleted first intersection, not important + straight ahead"
+            self.route[1]['distance'] += distance_start_p0
+            self.route[0] = start_point
         else:
-            bearing_start_p0 = geometry.bearing_between_two_points( start_point['lat'], start_point['lon'], self.route[0]['lat'], self.route[0]['lon'])
-            bearing_p0_p1 = self.route[1]['bearing']
-            turn = bearing_p0_p1 - bearing_start_p0
-            if turn < 0:
-                turn += 360
-            # find way id for first segment to the start point
-            result = DBControl().fetch_data("\
-                    WITH closest_ways AS ( \
-                        SELECT id, tags->'highway' as highway, tags->'name' as name, bbox, linestring \
-                        from ways ORDER BY linestring <-> 'POINT(%f %f)'::geometry \
-                        LIMIT 5 \
-                    ) \
-                    SELECT id, highway, name, bbox, linestring from closest_ways \
-                    where st_contains( bbox, ST_SETSRID(ST_Point(%f, %f),4326) ) = true \
-                    and highway LIKE '%%' \
-                    and ST_Distance(linestring::geography, 'POINT(%f %f)'::geography) < 10.0 \
-                    ORDER BY ST_Distance(linestring::geography, 'POINT(%f %f)'::geography)" \
-                    % (start_point['lon'], start_point['lat'], start_point['lon'], start_point['lat'],
-                        start_point['lon'], start_point['lat'], start_point['lon'], start_point['lat']))
-            if result.__len__() > 0:
-                new_way_id = result[0]['id']
-            else:
-                new_way_id = -1
-            collected_pois = []
-            # maybe delete first route point, if...
-            if turn > 150 and turn < 210:
-                # turn around
-                new_way_id = self.route[1]['way_id']
-                collected_pois = self.route[1]['pois']
-                self.route.__delitem__(0)
-                self.route.__delitem__(0)
-            if turn < 30 or turn > 330:
-                if new_way_id == -1:
-                    new_way_id = self.route[1]['way_id']
-                if self.important_intersection(self.route[0]) == False:
-                    # straightforward at the same way
-                    collected_pois = self.route[1]['pois']
-                    self.route.__delitem__(0)
-                    self.route.__delitem__(0)
-            if new_way_id > -1:
-                first_segment = self.poi.create_way_segment_by_id( new_way_id )
+            print "start tuple: %s" % start_vertex_tuple.__str__()
+            self.route[0]['turn'] = turn
+            if start_vertex_tuple.distance <= 5.0 \
+                    or (start_vertex_tuple.way_class in [1,2,3] and start_vertex_tuple.distance <= 15.0):
+                first_segment = self.poi.create_way_segment_by_id(start_vertex_tuple.way_id)
             else:
                 first_segment = {"name":self.translator.translate("footway_creator", "first_segment"),
-                        "type":"footway", "sub_type":"", "way_id":-1}
-            first_segment['bearing'] = geometry.bearing_between_two_points( start_point['lat'], start_point['lon'], self.route[0]['lat'], self.route[0]['lon'])
-            first_segment['distance'] = geometry.distance_between_two_points( start_point['lat'], start_point['lon'], self.route[0]['lat'], self.route[0]['lon'])
-            first_segment['pois'] = collected_pois
-            # if the first route point is already the destination now, we need no turn value
-            if self.route.__len__() > 1:
-                turn = self.route[1]['bearing'] - first_segment['bearing']
-                if turn < 0:
-                    turn += 360
-                self.route[0]['turn'] = turn
+                        "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
+            first_segment['bearing'] = bearing_start_p0
+            first_segment['distance'] = distance_start_p0
             self.route.insert(0, first_segment)
             self.route.insert(0, start_point)
 
-        # destination
-        distance_plast_dest = geometry.distance_between_two_points( self.route[-1]['lat'], self.route[-1]['lon'], dest_point['lat'], dest_point['lon'])
-        print "distance last = %d" % distance_plast_dest
+        # destination point
+        distance_plast_dest = geometry.distance_between_two_points(
+                self.route[-1]['lat'], self.route[-1]['lon'],
+                dest_point['lat'], dest_point['lon'])
+        bearing_plast_dest = geometry.bearing_between_two_points(
+                self.route[-1]['lat'], self.route[-1]['lon'],
+                dest_point['lat'], dest_point['lon'])
+        turn = geometry.turn_between_two_segments(
+                bearing_plast_dest, self.route[-2]['bearing'])
+        print "destination: turn = %d, distance = %d" % (turn, distance_plast_dest)
         if distance_plast_dest <= 5:
-            self.route.__delitem__(-1)
-            self.route.append(dest_point)
+            print "small dist, replaced dest point"
+            self.route[-1] = dest_point
+        elif turn >= 158 and turn <= 202:
+            # delete last route point, if you should turn around
+            print "replaced last intersection with destination point, turn around"
+            self.route[-2]['distance'] -= distance_plast_dest
+            self.route[-1] = dest_point
+        elif self.important_intersection(self.route[-1]) == False \
+                and (turn <= 22 or turn >= 338):
+            print "deleted last intersection, not important + straight ahead"
+            self.route[-2]['distance'] += distance_plast_dest
+            self.route[-1] = dest_point
         else:
-            bearing_plast_dest = geometry.bearing_between_two_points( self.route[-1]['lat'], self.route[-1]['lon'], dest_point['lat'], dest_point['lon'])
-            bearing_psecondlast_plast = self.route[-2]['bearing']
-            turn = bearing_plast_dest - bearing_psecondlast_plast
-            if turn < 0:
-                turn += 360
-            # find way id for last segment to the destination point
-            result = DBControl().fetch_data("\
-                    WITH closest_ways AS ( \
-                        SELECT id, tags->'highway' as highway, tags->'name' as name, bbox, linestring \
-                        from ways ORDER BY linestring <-> 'POINT(%f %f)'::geometry \
-                        LIMIT 5 \
-                    ) \
-                    SELECT id, highway, name, bbox, linestring from closest_ways \
-                    where st_contains( bbox, ST_SETSRID(ST_Point(%f, %f),4326) ) = true \
-                    and highway LIKE '%%' \
-                    and ST_Distance(linestring::geography, 'POINT(%f %f)'::geography) < 10.0 \
-                    ORDER BY ST_Distance(linestring::geography, 'POINT(%f %f)'::geography)" \
-                    % (dest_point['lon'], dest_point['lat'], dest_point['lon'], dest_point['lat'],
-                        dest_point['lon'], dest_point['lat'], dest_point['lon'], dest_point['lat']))
-            if result.__len__() > 0:
-                new_way_id = result[0]['id']
-            else:
-                new_way_id = -1
-            collected_pois = []
-            # maybe delete last route point, if...
-            if turn > 150 and turn < 210:
-                # turn around
-                new_way_id = self.route[-2]['way_id']
-                collected_pois = self.route[-2]['pois']
-                self.route.__delitem__(-1)
-                self.route.__delitem__(-1)
-            if turn < 30 or turn > 330:
-                if new_way_id == -1:
-                    new_way_id = self.route[-2]['way_id']
-                if self.important_intersection(self.route[-1]) == False:
-                    # straightforward at the same way
-                    collected_pois = self.route[-2]['pois']
-                    self.route.__delitem__(-1)
-                    self.route.__delitem__(-1)
-            # add last segment and destination point
-            if new_way_id > -1:
-                last_segment = self.poi.create_way_segment_by_id( new_way_id )
-            else:
-                last_segment = {"name":self.translator.translate("footway_creator", "last_segment"),
-                        "type":"footway", "sub_type":"", "way_id":-1}
-            last_segment['bearing'] = geometry.bearing_between_two_points( self.route[-1]['lat'], self.route[-1]['lon'], dest_point['lat'], dest_point['lon'])
-            last_segment['distance'] = geometry.distance_between_two_points( self.route[-1]['lat'], self.route[-1]['lon'], dest_point['lat'], dest_point['lon'])
-            last_segment['pois'] = collected_pois
-            # if the first foute point is already the start now, we need no turn value
-            if self.route.__len__() > 1:
-                turn = last_segment['bearing'] - self.route[-2]['bearing']
-                if turn < 0:
-                    turn += 360
-                self.route[-1]['turn'] = turn
-            self.route.append(last_segment)
-            self.route.append(dest_point)
+            print "dest tuple: %s" % dest_vertex_tuple.__str__()
+            last_way_segment_id = -1
+            if dest_vertex_tuple.distance <= 5.0 \
+                    or (dest_vertex_tuple.way_class in [1,2,3] and dest_vertex_tuple.distance <= 15.0):
+                last_way_segment_id = dest_vertex_tuple.way_id
+            self.add_point_to_route(dest_point, last_way_segment_id, False)
         t6 = time.time()
 
         # print time overview
@@ -556,58 +505,83 @@ class RouteFootwayCreator:
                     % (route_length, number_of_intersections)
 
     def add_point_to_route(self, next_point, way_id, reverse, add_all_intersections=False):
-        # add new point to the route array
-        if self.route.__len__() == 0:
-            self.route.append(next_point)
-        elif self.route.__len__() == 1:
-            prev_point = self.route[-1]
-            next_segment = self.poi.create_way_segment_by_id( way_id, reverse )
-            next_segment['bearing'] = geometry.bearing_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-            next_segment['distance'] = geometry.distance_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-            self.route.append(next_segment)
-            self.route.append(next_point)
-        else:
-            prev_segment = self.route[-2]
-            prev_point = self.route[-1]
-            next_segment = self.poi.create_way_segment_by_id( way_id, reverse )
-            next_segment['bearing'] = geometry.bearing_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-            next_segment['distance'] = geometry.distance_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-            # get turn between last and next segment in degree
-            turn = next_segment['bearing'] - prev_segment['bearing']
-            if turn < 0:
-                turn += 360
-            self.route[-1]['turn'] = turn
-            # decide, if the previous point is important for routing
-            point_is_important = False
-            if next_segment['distance'] < 1:
-                point_is_important = False
-            elif turn > 22 and turn < 338:
-                point_is_important = True
-            elif prev_segment['name'] != next_segment['name'] or prev_segment['sub_type'] != next_segment['sub_type']:
-                # print "%s - %s;     %s - %s" % (prev_segment['name'], next_segment['name'], prev_segment['sub_type'], next_segment['sub_type'])
-                point_is_important = True
-            elif prev_point.has_key("sub_points") == True:
-                if add_all_intersections == True:
-                    point_is_important = True
-                else:
-                    # check for a bigger street
-                    point_is_important = self.important_intersection( prev_point )
-            ######
-            if point_is_important == False:
-                collected_pois = prev_segment['pois']
-                if prev_point['type'] == "intersection":
-                    collected_pois.append(prev_point)
-                self.route.__delitem__(-1)
-                self.route.__delitem__(-1)
-                prev_point = self.route[-1]
+        # create new way segment from id
+        try:
+            if way_id == -1:
+                next_segment = {"name":self.translator.translate("footway_creator", "last_segment"),
+                        "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
+            else:
                 next_segment = self.poi.create_way_segment_by_id( way_id, reverse )
-                next_segment['bearing'] = geometry.bearing_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-                next_segment['distance'] = geometry.distance_between_two_points( prev_point['lat'], prev_point['lon'], next_point['lat'], next_point['lon'])
-                next_segment['pois'] = collected_pois
-            self.route.append(next_segment)
+            next_segment['bearing'] = geometry.bearing_between_two_points(
+                    self.route[-1]['lat'], self.route[-1]['lon'],
+                    next_point['lat'], next_point['lon'])
+        except IndexError as e:
+            # if the route is still empty, add the next route point and exit
             self.route.append(next_point)
+            return
+        # try to find and delete unimportant intersections and way points
+        try:
+            turn = geometry.turn_between_two_segments(
+                    next_segment['bearing'], self.route[-2]['bearing'])
+            if (add_all_intersections == False \
+                        or (add_all_intersections == True and self.route[-1]['type'] != "intersection")) \
+                    and (turn <= 22 or turn >= 338) \
+                    and self.route[-2]['name'] == next_segment['name'] \
+                    and self.route[-2]['sub_type'] == next_segment['sub_type'] \
+                    and self.important_intersection(self.route[-1], self.route[-2]) == False:
+                # delete an unimportant waypoint or intersection
+                del self.route[-2:]
+        except IndexError as e:
+            pass
+        # find and delete zigzag
+        try:
+            turn = geometry.turn_between_two_segments(
+                    next_segment['bearing'], self.route[-4]['bearing'])
+            if add_all_intersections == False \
+                    and (turn <= 22 or turn >= 338) \
+                    and self.route[-2]['distance'] < 4 \
+                    and self.important_intersection(self.route[-1], self.route[-2]) == False \
+                    and self.important_intersection(self.route[-3], self.route[-4]) == False:
+                del self.route[-4:]
+        except IndexError as e:
+            pass
+        # delete double train intersection but leave first of two intersections
+        try:
+            turn = geometry.turn_between_two_segments(
+                    next_segment['bearing'], self.route[-4]['bearing'])
+            if add_all_intersections == False \
+                    and (turn <= 22 or turn >= 338) \
+                    and self.route[-2]['distance'] < 5 \
+                    and ( \
+                        self.translator.translate("railway", "tram") in self.route[-1]['name'] \
+                        or self.translator.translate("railway", "rail") in self.route[-1]['name'] \
+                        ) \
+                    and ( \
+                        self.translator.translate("railway", "tram") in self.route[-3]['name'] \
+                        or self.translator.translate("railway", "rail") in self.route[-3]['name'] \
+                        ):
+                del self.route[-2:]
+        except IndexError as e:
+            pass
+        # calculate the updated distance and bearing to the potentially new prev point
+        next_segment['bearing'] = geometry.bearing_between_two_points(
+                self.route[-1]['lat'], self.route[-1]['lon'],
+                next_point['lat'], next_point['lon'])
+        next_segment['distance'] = geometry.distance_between_two_points(
+                self.route[-1]['lat'], self.route[-1]['lon'],
+                next_point['lat'], next_point['lon'])
+        # update turn value
+        try:
+            if "turn" not in self.route[-1]:
+                self.route[-1]['turn'] = geometry.turn_between_two_segments(
+                        next_segment['bearing'], self.route[-2]['bearing'])
+        except IndexError as e:
+            pass
+        # append new segment and point
+        self.route.append(next_segment)
+        self.route.append(next_point)
 
-    def important_intersection(self, intersection ):
+    def important_intersection(self, intersection, prev_segment = {}):
         if intersection.has_key("sub_points") == False:
             return False
         classes = [ self.translator.translate("highway", "primary"), self.translator.translate("highway", "primary_link"),
@@ -622,70 +596,97 @@ class RouteFootwayCreator:
                 big_streets.append(sub_point['name'])
             if sub_point['sub_type'] in [self.translator.translate("railway", "tram"), self.translator.translate("railway", "rail")]:
                 tram_or_rail = True
-        if big_streets.__len__() > 1 or tram_or_rail == True:
+        if big_streets.__len__() > 1:
             return True
-        return False
+        elif big_streets.__len__() > 0 \
+                and prev_segment.has_key("sub_type") == True and prev_segment['sub_type'] not in classes:
+            return True
+        elif tram_or_rail == True:
+            return True
+        else:
+            return False
 
     def get_nearest_vertex(self, lat, lon):
+        tuple_list = []
         start = time.time()
-        # get vertex of nearest big street
-        big_street_vertex = DBControl().fetch_data("" \
+        # get vertex of nearest big street or -1 if noone is available
+        try:
+            big_street_vertex = DBControl().fetch_data("" \
                 "SELECT source from %s " \
-                "WHERE clazz = ANY('{1,4,6}') AND osm_name != ''" \
-                "order by ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography) " \
-                "limit 1;" \
-                % (self.temp_routing_table_name, lon, lat))[0]['source']
+                        "WHERE kmh = ANY('{1,2,3}') AND osm_name != ''" \
+                    "order by ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography) " \
+                    "limit 1;" \
+                    % (self.temp_routing_table_name, lon, lat))[0]['source']
+        except IndexError as e:
+            big_street_vertex = -1
         t1 = time.time()
         # get nearest way segments
-        tuple_list = []
-        nearest_lines = DBControl().fetch_data("\
-                SELECT id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2 \
-                from %s WHERE cost > 0 \
-                ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
-                % (self.temp_routing_table_name, lon, lat))
+        nearest_lines_streets_name = DBControl().fetch_data("\
+                SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
+                    ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
+                    from %s \
+                    WHERE cost > 0 AND osm_name != '' \
+                        AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 10.0 \
+                    ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography)" \
+                % (lon, lat, self.temp_routing_table_name, lon, lat, lon, lat))
+        for line in nearest_lines_streets_name:
+            print "%s: %d" % (line['osm_name'], line['way_distance'])
+        print "-----"
+        nearest_lines_rest = DBControl().fetch_data("\
+                SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
+                    ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
+                    from %s WHERE cost > 0 \
+                    ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
+                % (lon, lat, self.temp_routing_table_name, lon, lat))
         t2 = time.time()
-        for line in nearest_lines:
+        ids = []
+        for index, line in enumerate(nearest_lines_streets_name + nearest_lines_rest):
             # check, if source or target vertex of found edge is closer
             source_dist = geometry.distance_between_two_points_as_float(
                     line['y1'], line['x1'], lat, lon)
             target_dist = geometry.distance_between_two_points_as_float(
                     line['y2'], line['x2'], lat, lon)
             if source_dist < target_dist:
-                tuple_list.append(RouteFootwayCreator.VertexDistanceTuple(line['source'], source_dist, line['type']))
+                id = line['source']
             else:
-                tuple_list.append(RouteFootwayCreator.VertexDistanceTuple(line['target'], target_dist, line['type']))
-            #print "index = %d, edge id = %d, source = %d, target = %d, type = %d, name = %s" \
-            #        % (index, line['id'], line['source'], line['target'], line['type'], line['osm_name'])
-            #print "distances: %f / %f" % (source_dist, target_dist)
-        tuple_list.sort(key = operator.attrgetter('distance'))
-        t3 = time.time()
-        # filter duplicate vertex ids
-        ids = []
-        for index, tuple in enumerate(tuple_list):
-            if tuple.id not in ids:
-                #print "Tuple %d: id = %d" % (index+1, tuple.id)
-                raw_route = DBControl().fetch_data("" \
-                        "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
-                            "'select id, source, target, km as cost from %s', %d, %d, false, false)" \
-                        % (self.temp_routing_table_name, tuple.id, big_street_vertex))
-                if raw_route.__len__() > 0:
-                    ids.append(tuple.id)
+                id = line['target']
+            if index < 5:
+                print "id = %d;   dist = %d: %d/%d,   %s" % (id, line['way_distance'], source_dist, target_dist, line['osm_name'])
+            # add id to id list
+            if id not in ids:
+                # check if the way is connected to the main street network
+                # but only if we found a big intersection
+                # otherwise thake the id without verification
+                raw_route = []
+                if big_street_vertex > -1:
+                    raw_route = DBControl().fetch_data("" \
+                            "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
+                                "'select id, source, target, km as cost from %s', %d, %d, false, false)" \
+                            % (self.temp_routing_table_name, id, big_street_vertex))
+                if big_street_vertex == -1 or raw_route.__len__() > 0:
+                    ids.append(id)
+                    tuple_list.append( RouteFootwayCreator.VertexTuple(
+                            id, line['osm_id'], line['type'], line['way_distance'], line['osm_name']) )
             # break if the next point is more than 250 meters away or if you already have
             # at least 10 ids
-            if tuple.distance > 250 or ids.__len__() > 9:
+            if ids.__len__() > 0 \
+                    and (line['way_distance'] > 250 or ids.__len__() == 10):
                 break
         end = time.time()
-        print "%.2f, %.2f, %.2f, %.2f" % (t1-start, t2-t1, t3-t2, end-t3)
+        print "%.2f, %.2f, %.2f" % (t1-start, t2-t1, end-t2)
         print "find vertex, time elapsed: %.2f" % (end-start)
-        return ids
+        return tuple_list
 
-    class VertexDistanceTuple:
-        def __init__(self, id, distance, type):
-            self.id = id
+    class VertexTuple:
+        def __init__(self, point_id, way_id, way_class, distance, name):
+            self.point_id = point_id
+            self.way_id = way_id
+            self.way_class = way_class
             self.distance = distance
-            self.type = type
+            self.name = name
         def __str__(self):
-            return "ID = %d     dist = %d, type = %d" % (self.id, self.distance, self.type)
+            return "Point ID = %d     Way ID = %d     dist = %d     name = %s" \
+                    % (self.point_id, self.way_id, self.distance, self.name)
 
     class FootwayRouteCreationError(LookupError):
         """ is called, when the creation of the footway route failed """
