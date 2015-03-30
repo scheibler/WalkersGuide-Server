@@ -34,6 +34,23 @@ get_local_map_sequence_number() {
     return 0
 }
 
+get_local_productive_map_sequence_number() {
+    # first check, if database and map state file exist
+    if [ -z "$(psql -h $server_address -U $user_name -l | grep -i $db_name)" ]; then
+        return 41
+    fi
+    if [ ! -f "$productive_db_map_state_file" ]; then
+        return 42
+    fi
+    # get sequence number
+    productive_map_version=$(grep "sequenceNumber" "$productive_db_map_state_file" | cut -d '=' -f2)
+    if [ -z "$productive_map_version" ]; then
+        return 43
+    fi
+    echo "$productive_map_version"
+    return 0
+}
+
 get_online_map_sequence_number() {
     online_map_version=$(wget -q -O - "$download_state_file_url" | grep "sequenceNumber" | cut -d '=' -f2)
     if [ -z "$online_map_version" ]; then

@@ -87,10 +87,21 @@ class RoutingWebService():
 
         # allowed way classes
         if options.has_key("allowed_way_classes") == False:
-            allowed_way_classes = ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "steps"]
+            allowed_way_classes = ["big_streets", "small_streets", "paved_ways",
+                    "unpaved_ways", "unclassified_ways", "steps"]
         else:
             allowed_way_classes = options['allowed_way_classes']
         print allowed_way_classes
+
+        # blocked way ids
+        blocked_ways = []
+        if options.has_key("blocked_ways") == True:
+            for id in options['blocked_ways'].split(","):
+                try:
+                    blocked_ways.append(int(id))
+                except ValueError as e:
+                    pass
+        print blocked_ways
 
         # create session id
         if options.has_key("session_id") == False:
@@ -123,7 +134,7 @@ class RoutingWebService():
 
         # get a route
         rfc = RouteFootwayCreator(session_id, route_logger, translator,
-                options['route_factor'], allowed_way_classes)
+                options['route_factor'], allowed_way_classes, blocked_ways)
         for i in range(1, source_route.__len__(), 2):
             if source_route[i]['type'] == "footway" and source_route[i]['sub_type'] == "footway_place_holder":
                 try:
@@ -144,6 +155,7 @@ class RoutingWebService():
                 return_tuple['route'].append(source_route[i+1])
         # delete start point and first route segment, if it's a nameless one, just added as place holder
         if return_tuple['route'].__len__() >= 3 \
+                and return_tuple['route'][1].has_key("sub_type") \
                 and return_tuple['route'][1]['sub_type'] == "":
             print "deleted placeholder start segment %s" % return_tuple['route'][1]
             return_tuple['route'].__delitem__(0)
@@ -259,7 +271,8 @@ class RoutingWebService():
         route_logger = RouteLogger("routes", "%s-way_id.%s"
                 % (start_point['name'].replace(" ", "."), options['way_id']))
         rfc = RouteFootwayCreator(session_id, route_logger, translator, 1.0,
-                ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "steps"])
+                ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways",
+                    "steps"], [])
         try:
             route = rfc.follow_this_way(start_point,
                     options['way_id'], options['bearing'], add_all_intersections)
@@ -747,7 +760,7 @@ class RoutingWebService():
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         return_tuple['interface'] = 3
-        return_tuple['server'] = "0.2.3"
+        return_tuple['server'] = "0.3.0"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

@@ -11,10 +11,12 @@ import time, json, operator, re, math
 
 class RouteFootwayCreator:
 
-    def __init__(self, session_id, route_logger_object, translator_object, indirection_factor, allowed_way_classes):
+    def __init__(self, session_id, route_logger_object, translator_object,
+            indirection_factor, allowed_way_classes, blocked_ways):
         self.session_id = session_id
         self.route_logger = route_logger_object
         self.translator = translator_object
+
         # routing parameters
         self.route = []
         self.routing_table_name = Config().get_param("routing_table")
@@ -22,6 +24,8 @@ class RouteFootwayCreator:
                 % re.sub(r'[^a-zA-Z0-9]', '', self.session_id)
         self.intersections_table_name = Config().get_param("intersection_table")
         self.poi = POI(session_id, translator_object)
+        self.minimum_radius = 600
+        self.blocked_ways = blocked_ways
 
         # table column name for given indirection factor
         factor_column_name = "x1"
@@ -39,37 +43,34 @@ class RouteFootwayCreator:
         #   1 = good way
         #   2 = neutral way
         #   3 = bad way
-        #   4 = very, very, very bad way
-        #   5 = impassable way
+        #   4 = impassable way
         weight_list = DBControl().fetch_data("SELECT %s as weight \
                     from way_class_weights;" % factor_column_name)
         # way classes: find them in the kmh column of the routing table
-        #   wcw_id 2 -- list index 0 = class 1: big and unknown streets
-        #   wcw_id 1 -- list index 1 = class 2: middle streets
-        #   wcw_id 0 -- list index 2 = class 3: small streets
-        #   wcw_id 1 -- list index 3 = class 4: paved ways
-        #   wcw_id 2 -- list index 4 = class 5: unpaved ways
+        #   wcw_id 1 -- list index 0 = class 1: big, middle and unknown streets
+        #   wcw_id 0 -- list index 1 = class 2: small streets
+        #   wcw_id 1 -- list index 2 = class 3: paved ways
+        #   wcw_id 2 -- list index 3 = class 4: unpaved ways
+        #   wcw_id 2 -- list index 4 = class 5: unclassified ways
         #   wcw_id 2 -- list index 5 = class 6: steps
-        #   wcw_id 3 -- list index 6 = class 7: unspecified cycleways
-        #   wcw_id 4 -- list index 7 = class 8: impassable ways
+        #   wcw_id 3 -- list index 6 = class 7: impassable ways
         # initialize with all classes impassable
-        self.way_class_weight_list = [ weight_list[4]['weight'] for x in range(8)]
+        self.way_class_weight_list = [ weight_list[3]['weight'] for x in range(7)]
         if allowed_way_classes.__contains__("big_streets"):
-            # big streets: bad
-            self.way_class_weight_list[0] = weight_list[2]['weight']
-            # middle streets: neutral
-            self.way_class_weight_list[1] = weight_list[1]['weight']
+            # big and middle streets: neutral
+            self.way_class_weight_list[0] = weight_list[1]['weight']
         if allowed_way_classes.__contains__("small_streets"):
             # small streets: good
-            self.way_class_weight_list[2] = weight_list[0]['weight']
+            self.way_class_weight_list[1] = weight_list[0]['weight']
         if allowed_way_classes.__contains__("paved_ways"):
             # paved ways: neutral
-            self.way_class_weight_list[3] = weight_list[1]['weight']
+            self.way_class_weight_list[2] = weight_list[1]['weight']
         if allowed_way_classes.__contains__("unpaved_ways"):
             # unpaved ways: bad
+            self.way_class_weight_list[3] = weight_list[2]['weight']
+        if allowed_way_classes.__contains__("unclassified_ways"):
+            # unclassified ways: bad
             self.way_class_weight_list[4] = weight_list[2]['weight']
-            # unspecified cycleways: very, very, very bad
-            self.way_class_weight_list[6] = weight_list[3]['weight']
         if allowed_way_classes.__contains__("steps"):
             # steps: bad
             self.way_class_weight_list[5] = weight_list[2]['weight']
@@ -77,12 +78,6 @@ class RouteFootwayCreator:
         for index, weight in enumerate(self.way_class_weight_list):
             self.way_class_weight_list[index] = 100 - weight
         self.route_logger.append_to_log(self.way_class_weight_list, True)
-        # define the minimum temp table radius
-        if allowed_way_classes.__contains__("paved_ways") \
-                or allowed_way_classes.__contains__("unpaved_ways"):
-            self.minimum_radius = 250
-        else:
-            self.minimum_radius = 500
 
     def find_footway_route(self, start_point, dest_point):
         print "footway route creator"
@@ -127,10 +122,15 @@ class RouteFootwayCreator:
                 self.translator.translate("footway_creator", "foot_route_creation_failed"))
         # adapt cost column
         t11 = time.time()
+        # weight list
         for index, weight in enumerate(self.way_class_weight_list):
             DBControl().send_data("" \
                     "UPDATE %s SET cost=km*%d where kmh = %d;" \
                     % (self.temp_routing_table_name, weight, (index+1)) )
+        # blocked ways
+        DBControl().send_data("" \
+                "UPDATE %s SET cost=km*(-1) WHERE osm_id = ANY('{%s}');" \
+                % (self.temp_routing_table_name, ','.join(str(x) for x in self.blocked_ways)) )
         # add table index and recreate source and target columns
         t12 = time.time()
         DBControl().send_data("" \
@@ -189,7 +189,7 @@ class RouteFootwayCreator:
                     self.translator.translate("message", "process_canceled"))
 
         # route calculation
-        raw_route = []
+        best_route = RouteFootwayCreator.RawRoute([], None, None)
         max_vertex_list_length = start_vertex_list.__len__()
         if max_vertex_list_length < dest_vertex_list.__len__():
             max_vertex_list_length = dest_vertex_list.__len__()
@@ -197,39 +197,41 @@ class RouteFootwayCreator:
         for x in range(0, max_vertex_list_length):
             for y in range(0, x+1):
                 if x < start_vertex_list.__len__() and y < dest_vertex_list.__len__() \
-                        and raw_route.__len__() == 0:
-                    print "%d  %d" % (x, y)
-                    raw_route = DBControl().fetch_data("" \
+                        and best_route.cost == 1000000:
+                    result = DBControl().fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
                                 start_vertex_list[x].point_id, dest_vertex_list[y].point_id))
-                    if raw_route.__len__() > 0:
-                        start_vertex_tuple = start_vertex_list[x]
-                        dest_vertex_tuple = dest_vertex_list[y]
+                    if any(result):
+                        best_route = RouteFootwayCreator.RawRoute(result, start_vertex_list[x], dest_vertex_list[y])
+                        self.route_logger.append_to_log(
+                                "%d  %d    Cost: %.2f\n    start: %s\n    dest: %s" % (x, y, best_route.cost,
+                                    start_vertex_list[x].__str__(), dest_vertex_list[y].__str__()), True)
                 if y < start_vertex_list.__len__() and x < dest_vertex_list.__len__() \
-                        and x != y and raw_route.__len__() == 0:
-                    print "%d  %d ." % (y, x)
-                    raw_route = DBControl().fetch_data("" \
+                        and x != y and best_route.cost == 1000000:
+                    result = DBControl().fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
                                 start_vertex_list[y].point_id, dest_vertex_list[x].point_id))
-                    if raw_route.__len__() > 0:
-                        start_vertex_tuple = start_vertex_list[y]
-                        dest_vertex_tuple = dest_vertex_list[x]
-                if Config().has_session_id_to_remove(self.session_id):
-                    DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
-                    raise RouteFootwayCreator.FootwayRouteCreationError(
-                            self.translator.translate("message", "process_canceled"))
-        if raw_route.__len__() == 0:
-            raw_route = DBControl().fetch_data("" \
+                    if any(result):
+                        best_route = RouteFootwayCreator.RawRoute(result, start_vertex_list[y], dest_vertex_list[x])
+                        self.route_logger.append_to_log(
+                                "%d  %d    Cost: %.2f\n    start: %s\n    dest: %s" % (y, x, best_route.cost,
+                                    start_vertex_list[y].__str__(), dest_vertex_list[x].__str__()), True)
+        if Config().has_session_id_to_remove(self.session_id):
+            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            raise RouteFootwayCreator.FootwayRouteCreationError(
+                    self.translator.translate("message", "process_canceled"))
+        if best_route.cost == 1000000:
+            result = DBControl().fetch_data("" \
                     "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
-                        "'select id, source, target, km AS cost from %s', %d, %d, false, false)" \
+                        "'select id, source, target, km AS cost from %s WHERE kmh != 7', %d, %d, false, false)" \
                     % (self.temp_routing_table_name,
                         start_vertex_list[0].point_id, dest_vertex_list[0].point_id))
             DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
-            if raw_route.__len__() > 0:
+            if any(result):
                 raise RouteFootwayCreator.FootwayRouteCreationError(
                         self.translator.translate("footway_creator", "foot_route_creation_failed_way_classes_missing"))
             else:
@@ -238,7 +240,7 @@ class RouteFootwayCreator:
         t4 = time.time()
         self.route_logger.append_to_log("routing algorithm: %.2f" % (t4-t3), True)
 
-        for r in raw_route:
+        for r in best_route.route:
             if r['edge_id'] == -1:
                 continue
             part = DBControl().fetch_data("SELECT * from %s where id=%d" \
@@ -246,7 +248,7 @@ class RouteFootwayCreator:
     
             # exception for the first route segment
             # add start point of route first
-            if part['source'] == start_vertex_tuple.point_id:
+            if part['source'] == best_route.start_vertex_tuple.point_id:
                 print "start point added"
                 # check if current point is an intersection
                 next_point = self.poi.create_intersection_by_id(part['osm_source_id'])
@@ -254,7 +256,7 @@ class RouteFootwayCreator:
                     next_point = self.poi.create_way_point_by_id(part['osm_source_id'])
                 self.route.append(next_point)
                 last_target_id = part['source']
-            elif part['target'] == start_vertex_tuple.point_id:
+            elif part['target'] == best_route.start_vertex_tuple.point_id:
                 print "target point added"
                 # check if current point is an intersection
                 next_point = self.poi.create_intersection_by_id(part['osm_target_id'])
@@ -263,7 +265,7 @@ class RouteFootwayCreator:
                 self.route.append(next_point)
                 last_target_id = part['target']
     
-            # add target point
+            # create next point
             if last_target_id == part['source']:
                 next_point = self.poi.create_intersection_by_id(part['osm_target_id'])
                 if next_point == {}:
@@ -276,11 +278,11 @@ class RouteFootwayCreator:
                     next_point = self.poi.create_way_point_by_id(part['osm_source_id'])
                 reverse = True
                 last_target_id = part['source']
-            self.add_point_to_route(next_point, part['osm_id'], reverse)
-            try:
-                self.route[-2]['way_class'] = part['kmh']
-            except IndexError as e:
-                pass
+            # create next segment
+            next_segment = self.poi.create_way_segment_by_id(part['osm_id'], reverse )
+            next_segment['way_class'] = part['kmh']
+            for point in self.get_route_segment_sub_points(part['id'], reverse) + [next_point]:
+                self.add_point_to_route(point, next_segment.copy())
             # check for cancel command
             if Config().has_session_id_to_remove(self.session_id):
                 raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -302,6 +304,7 @@ class RouteFootwayCreator:
             return self.route
 
         # add start point
+        first_segment = None
         distance_start_p0 = geometry.distance_between_two_points(
                 start_point['lat'], start_point['lon'],
                 self.route[0]['lat'], self.route[0]['lon'])
@@ -312,27 +315,33 @@ class RouteFootwayCreator:
         turn = geometry.turn_between_two_segments(
                 bearing_p0_p1, bearing_start_p0)
         print "start: turn = %d, distance = %d" % (turn, distance_start_p0)
+        print "start tuple: %s" % best_route.start_vertex_tuple.__str__()
         if distance_start_p0 <= 5:
             print "small dist, replaced start point"
             self.route[0] = start_point
-        elif turn >= 158 and turn <= 202:
-            print "replaced first intersection with start point"
-            self.route[1]['distance'] -= distance_start_p0
-            self.route[0] = start_point
-        elif self.important_intersection(self.route[0]) == False \
-                and (turn <= 22 or turn >= 338):
-            print "deleted first intersection, not important + straight ahead"
-            self.route[1]['distance'] += distance_start_p0
-            self.route[0] = start_point
-        else:
-            print "start tuple: %s" % start_vertex_tuple.__str__()
-            self.route[0]['turn'] = turn
-            if start_vertex_tuple.distance <= 5.0 \
-                    or (start_vertex_tuple.way_class in [1,2,3] and start_vertex_tuple.distance <= 15.0):
-                first_segment = self.poi.create_way_segment_by_id(start_vertex_tuple.way_id)
+        elif best_route.start_vertex_tuple.way_distance <= 5 \
+                or (best_route.start_vertex_tuple.way_class in [1,2] and best_route.start_vertex_tuple.way_distance <= 15):
+            if turn >= 158 and turn <= 202:
+                print "replaced first intersection with start point"
+                self.route[1]['distance'] -= distance_start_p0
+                self.route[0] = start_point
+            elif self.important_intersection(self.route[0]) == False \
+                    and (turn <= 22 or turn >= 338):
+                print "deleted first intersection, not important + straight ahead"
+                self.route[1]['distance'] += distance_start_p0
+                self.route[0] = start_point
             else:
-                first_segment = {"name":self.translator.translate("footway_creator", "first_segment"),
-                        "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
+                print "added known first segment"
+                first_segment = self.poi.create_way_segment_by_id(
+                        best_route.start_vertex_tuple.way_id)
+        else:
+            print "added placeholder first segment"
+            first_segment = {"name":self.translator.translate("footway_creator", "first_segment"),
+                    "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
+        # should we add a first segment?
+        if first_segment != None:
+            print "really added"
+            self.route[0]['turn'] = turn
             first_segment['bearing'] = bearing_start_p0
             first_segment['distance'] = distance_start_p0
             self.route.insert(0, first_segment)
@@ -348,26 +357,32 @@ class RouteFootwayCreator:
         turn = geometry.turn_between_two_segments(
                 bearing_plast_dest, self.route[-2]['bearing'])
         print "destination: turn = %d, distance = %d" % (turn, distance_plast_dest)
+        print "dest tuple: %s" % best_route.dest_vertex_tuple.__str__()
         if distance_plast_dest <= 5:
             print "small dist, replaced dest point"
             self.route[-1] = dest_point
-        elif turn >= 158 and turn <= 202:
-            # delete last route point, if you should turn around
-            print "replaced last intersection with destination point, turn around"
-            self.route[-2]['distance'] -= distance_plast_dest
-            self.route[-1] = dest_point
-        elif self.important_intersection(self.route[-1]) == False \
-                and (turn <= 22 or turn >= 338):
-            print "deleted last intersection, not important + straight ahead"
-            self.route[-2]['distance'] += distance_plast_dest
-            self.route[-1] = dest_point
+        elif best_route.dest_vertex_tuple.way_distance <= 5 \
+                or (best_route.dest_vertex_tuple.way_class in [1,2] and best_route.dest_vertex_tuple.way_distance <= 15):
+            if turn >= 158 and turn <= 202:
+                # delete last route point, if you should turn around
+                print "replaced last intersection with destination point, turn around"
+                self.route[-2]['distance'] -= distance_plast_dest
+                self.route[-1] = dest_point
+            elif self.important_intersection(self.route[-1]) == False \
+                    and (turn <= 22 or turn >= 338):
+                print "deleted last intersection, not important + straight ahead"
+                self.route[-2]['distance'] += distance_plast_dest
+                self.route[-1] = dest_point
+            else:
+                print "added known last segment"
+                dest_segment = self.poi.create_way_segment_by_id(
+                        best_route.dest_vertex_tuple.way_id)
+                self.add_point_to_route(dest_point, dest_segment)
         else:
-            print "dest tuple: %s" % dest_vertex_tuple.__str__()
-            last_way_segment_id = -1
-            if dest_vertex_tuple.distance <= 5.0 \
-                    or (dest_vertex_tuple.way_class in [1,2,3] and dest_vertex_tuple.distance <= 15.0):
-                last_way_segment_id = dest_vertex_tuple.way_id
-            self.add_point_to_route(dest_point, last_way_segment_id, False)
+            print "added placeholder last segment"
+            dest_segment = {"name":self.translator.translate("footway_creator", "last_segment"),
+                    "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
+            self.add_point_to_route(dest_point, dest_segment)
         t6 = time.time()
 
         # print time overview
@@ -414,14 +429,16 @@ class RouteFootwayCreator:
                 next_point = self.poi.create_intersection_by_id(way['nodes'][index])
                 if next_point == {}:
                     next_point = self.poi.create_way_point_by_id(way['nodes'][index])
-                self.add_point_to_route(next_point, way_id, False, add_all_intersections)
+                next_segment = self.poi.create_way_segment_by_id(way_id)
+                self.add_point_to_route(next_point, next_segment, add_all_intersections)
             last_node_id = way['nodes'][-1]
         else:
             for index in range( id_index, -1, -1):
                 next_point = self.poi.create_intersection_by_id(way['nodes'][index])
                 if next_point == {}:
                     next_point = self.poi.create_way_point_by_id(way['nodes'][index])
-                self.add_point_to_route(next_point, way_id, True, add_all_intersections)
+                next_segment = self.poi.create_way_segment_by_id(way_id, True)
+                self.add_point_to_route(next_point, next_segment, add_all_intersections)
             last_node_id = way['nodes'][0]
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
@@ -446,7 +463,9 @@ class RouteFootwayCreator:
                         next_point = self.poi.create_intersection_by_id(way['nodes'][index])
                         if next_point == {}:
                             next_point = self.poi.create_way_point_by_id(way['nodes'][index])
-                        self.add_point_to_route(next_point, last_way_properties['way_id'], False, add_all_intersections)
+                        next_segment = self.poi.create_way_segment_by_id(
+                                last_way_properties['way_id'])
+                        self.add_point_to_route(next_point, next_segment, add_all_intersections)
                     last_node_id = way['nodes'][-1]
                     last_way_properties = next_way_properties
                     found_next_part = True
@@ -456,7 +475,9 @@ class RouteFootwayCreator:
                         next_point = self.poi.create_intersection_by_id(way['nodes'][index])
                         if next_point == {}:
                             next_point = self.poi.create_way_point_by_id(way['nodes'][index])
-                        self.add_point_to_route(next_point, last_way_properties['way_id'], True, add_all_intersections)
+                        next_segment = self.poi.create_way_segment_by_id(
+                                last_way_properties['way_id'], True)
+                        self.add_point_to_route(next_point, next_segment, add_all_intersections)
                     last_node_id = way['nodes'][0]
                     last_way_properties = next_way_properties
                     found_next_part = True
@@ -504,14 +525,9 @@ class RouteFootwayCreator:
             return self.translator.translate("footway_creator", "route_description_without_transport") \
                     % (route_length, number_of_intersections)
 
-    def add_point_to_route(self, next_point, way_id, reverse, add_all_intersections=False):
-        # create new way segment from id
+    def add_point_to_route(self, next_point, next_segment, add_all_intersections=False):
+        # calculate bearing of new segment
         try:
-            if way_id == -1:
-                next_segment = {"name":self.translator.translate("footway_creator", "last_segment"),
-                        "type":"footway", "sub_type":"", "way_id":-1, "pois":[]}
-            else:
-                next_segment = self.poi.create_way_segment_by_id( way_id, reverse )
             next_segment['bearing'] = geometry.bearing_between_two_points(
                     self.route[-1]['lat'], self.route[-1]['lon'],
                     next_point['lat'], next_point['lon'])
@@ -606,71 +622,122 @@ class RouteFootwayCreator:
         else:
             return False
 
+    def get_route_segment_sub_points(self, routing_table_id, reverse):
+        c_list = DBControl().fetch_data("" \
+                "SELECT ST_Y(geom) AS lat, ST_X(geom) AS lon " \
+                "FROM (" \
+                    "SELECT ST_PointN(geom_way, generate_series(1, ST_NPoints(geom_way))) AS geom " \
+                    "FROM %s WHERE id = %d) AS points;" \
+                % (self.temp_routing_table_name, routing_table_id))
+        if reverse:
+            c_list = c_list[::-1]
+        point_list = []
+        last_accepted_bearing = geometry.bearing_between_two_points(
+                    c_list[0]['lat'], c_list[0]['lon'], c_list[1]['lat'], c_list[1]['lon'])
+        for i in range(1, c_list.__len__()-1):
+            new_bearing = geometry.bearing_between_two_points(
+                    c_list[i]['lat'], c_list[i]['lon'], c_list[i+1]['lat'], c_list[i+1]['lon'])
+            turn = geometry.turn_between_two_segments(
+                    new_bearing, last_accepted_bearing)
+            if turn > 22 and turn < 338:
+                last_accepted_bearing = new_bearing
+                point_list.append(self.poi.create_way_point(-1, c_list[i]['lat'], c_list[i]['lon'], {}))
+        return point_list
+
     def get_nearest_vertex(self, lat, lon):
-        tuple_list = []
         start = time.time()
         # get vertex of nearest big street or -1 if noone is available
         try:
             big_street_vertex = DBControl().fetch_data("" \
                 "SELECT source from %s " \
-                        "WHERE kmh = ANY('{1,2,3}') AND osm_name != ''" \
+                        "WHERE kmh = ANY('{1,2}') AND osm_name != ''" \
                     "order by ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography) " \
                     "limit 1;" \
                     % (self.temp_routing_table_name, lon, lat))[0]['source']
         except IndexError as e:
             big_street_vertex = -1
         t1 = time.time()
+
         # get nearest way segments
-        nearest_lines_streets_name = DBControl().fetch_data("\
+        nearest_lines = DBControl().fetch_data("\
                 SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                     ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
-                    from %s \
-                    WHERE cost > 0 AND osm_name != '' \
-                        AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 10.0 \
-                    ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography)" \
-                % (lon, lat, self.temp_routing_table_name, lon, lat, lon, lat))
-        for line in nearest_lines_streets_name:
-            print "%s: %d" % (line['osm_name'], line['way_distance'])
-        print "-----"
-        nearest_lines_rest = DBControl().fetch_data("\
-                SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
-                    ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
-                    from %s WHERE cost > 0 \
+                    from %s WHERE kmh != 7 \
                     ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
                 % (lon, lat, self.temp_routing_table_name, lon, lat))
+        # try to prefer impassable ways if the user must cross them to reach destination
+        if big_street_vertex > -1:
+            try:
+                nearest_impassable = DBControl().fetch_data("\
+                        SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
+                            ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
+                            from %s \
+                            WHERE kmh = 7 AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 5.0 \
+                            ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
+                        % (lon, lat, self.temp_routing_table_name, lon, lat, lon, lat))[0]
+                # test for impassable intersecting way, if exists, add priviously found way, else
+                # catch IndexError exception
+                nearest_intersecting = DBControl().fetch_data("\
+                        SELECT * FROM %s \
+                        WHERE kmh = 7 AND osm_id != %d \
+                            AND ST_Intersects(geom_way, \
+                                ST_SetSRID(ST_MakeLine(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f)), 4326)) = 't'" \
+                        % (self.temp_routing_table_name, nearest_impassable['osm_id'],
+                            lon, lat, nearest_lines[0]['x1'], nearest_lines[0]['y1']))[0]
+                nearest_lines.insert(0, nearest_impassable)
+            except IndexError as e:
+                pass
+        # try to prefer streets with a max distance of 10 meters
+        try:
+            nearest_street = DBControl().fetch_data("\
+                    SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
+                        ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
+                        from %s \
+                        WHERE kmh != 7 AND osm_name != '' \
+                            AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 10.0 \
+                        ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography)" \
+                    % (lon, lat, self.temp_routing_table_name, lon, lat, lon, lat))[0]
+            if nearest_lines[0]['type'] == 7:
+                nearest_lines.insert(1, nearest_street)
+            else:
+                nearest_lines.insert(0, nearest_street)
+        except IndexError as e:
+            pass
         t2 = time.time()
-        ids = []
-        for index, line in enumerate(nearest_lines_streets_name + nearest_lines_rest):
+
+        tuple_list = []
+        for index, line in enumerate(nearest_lines):
             # check, if source or target vertex of found edge is closer
             source_dist = geometry.distance_between_two_points_as_float(
                     line['y1'], line['x1'], lat, lon)
             target_dist = geometry.distance_between_two_points_as_float(
                     line['y2'], line['x2'], lat, lon)
             if source_dist < target_dist:
-                id = line['source']
+                tuple = RouteFootwayCreator.VertexTuple(line['source'], source_dist,
+                        line['osm_id'], line['type'], line['way_distance'], line['osm_name'])
             else:
-                id = line['target']
-            if index < 5:
-                print "id = %d;   dist = %d: %d/%d,   %s" % (id, line['way_distance'], source_dist, target_dist, line['osm_name'])
+                tuple = RouteFootwayCreator.VertexTuple(line['target'], target_dist,
+                        line['osm_id'], line['type'], line['way_distance'], line['osm_name'])
+            if index < 7:
+                print "id = %d;   dist = %d: %d/%d,   %d / %s" % (tuple.point_id, line['way_distance'], source_dist, target_dist, line['type'], line['osm_name'])
             # add id to id list
-            if id not in ids:
+            if not any(x for x in tuple_list if x.point_id == tuple.point_id):
                 # check if the way is connected to the main street network
                 # but only if we found a big intersection
                 # otherwise thake the id without verification
-                raw_route = []
-                if big_street_vertex > -1:
+                if big_street_vertex == -1:
+                    tuple_list.append(tuple)
+                else:
                     raw_route = DBControl().fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
-                                "'select id, source, target, km as cost from %s', %d, %d, false, false)" \
-                            % (self.temp_routing_table_name, id, big_street_vertex))
-                if big_street_vertex == -1 or raw_route.__len__() > 0:
-                    ids.append(id)
-                    tuple_list.append( RouteFootwayCreator.VertexTuple(
-                            id, line['osm_id'], line['type'], line['way_distance'], line['osm_name']) )
-            # break if the next point is more than 250 meters away or if you already have
-            # at least 10 ids
-            if ids.__len__() > 0 \
-                    and (line['way_distance'] > 250 or ids.__len__() == 10):
+                                "'select id, source, target, km as cost from %s WHERE kmh != 7', %d, %d, false, false)" \
+                            % (self.temp_routing_table_name, tuple.point_id, big_street_vertex))
+                    if any(raw_route):
+                        tuple_list.append(tuple)
+            # break if the next point is more than 100 meters away or if you already have
+            # at least 15 ids
+            if len(tuple_list) >= 5 \
+                    and (line['way_distance'] > 100 or len(tuple_list) >= 15):
                 break
         end = time.time()
         print "%.2f, %.2f, %.2f" % (t1-start, t2-t1, end-t2)
@@ -678,15 +745,34 @@ class RouteFootwayCreator:
         return tuple_list
 
     class VertexTuple:
-        def __init__(self, point_id, way_id, way_class, distance, name):
+        def __init__(self, point_id, point_distance, way_id, way_class, way_distance, way_name):
             self.point_id = point_id
+            self.point_distance = point_distance
             self.way_id = way_id
             self.way_class = way_class
-            self.distance = distance
-            self.name = name
+            self.way_distance = way_distance
+            self.way_name = way_name
         def __str__(self):
-            return "Point ID = %d     Way ID = %d     dist = %d     name = %s" \
-                    % (self.point_id, self.way_id, self.distance, self.name)
+            return "Name: %s (wc=%d),     distance: p=%d w=%d,     Point ID: %d,     Way ID: %d" \
+                    % (self.way_name, self.way_class, self.point_distance, self.way_distance, self.point_id, self.way_id)
+
+    class RawRoute:
+        def __init__(self, route, start_vertex_tuple, dest_vertex_tuple):
+            self.route = route
+            self.start_vertex_tuple = start_vertex_tuple
+            self.dest_vertex_tuple = dest_vertex_tuple
+            if self.route.__len__() == 0:
+                self.cost = 1000000
+            else:
+                self.cost = 0
+                if self.start_vertex_tuple != None:
+                    self.cost += self.start_vertex_tuple.point_distance*0.2
+                    self.cost += self.start_vertex_tuple.way_distance*0.2
+                if self.dest_vertex_tuple != None:
+                    self.cost += self.dest_vertex_tuple.point_distance*0.2
+                    self.cost += self.dest_vertex_tuple.way_distance*0.2
+                for line in self.route:
+                    self.cost += line['cost']
 
     class FootwayRouteCreationError(LookupError):
         """ is called, when the creation of the footway route failed """

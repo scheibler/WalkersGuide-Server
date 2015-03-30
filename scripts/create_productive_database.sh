@@ -121,17 +121,29 @@ commands="\
 \\\timing\n\
 \n\
 -- update kmh table\n\
--- set all ways with foot = no to impassable\n\
-update $routing_table_name set kmh=8 where get_bit(flags::bit(8), 5) = 1;\n\
--- set all cycleways with foot = yes to kategory 5\n\
-update $routing_table_name set kmh=5 where clazz = 17 and get_bit(flags::bit(8), 6) = 1;\n\
--- set all tracks and paths with good smoothness, hard surface, grade1 or grade2 to class 4\n\
-update $routing_table_name set kmh=4 where \n\
-    (get_bit(flags::bit(8), 4) = 1 or get_bit(flags::bit(8), 3) = 1 or get_bit(flags::bit(8), 2) = 1)\n\
+-- set all cycleways (foot=yes), footways, tracks and paths with good smoothness,\n\
+-- hard surface, grade1 or grade2 to class 3 (paved ways)\n\
+update $routing_table_name set kmh=3 where \n\
+    (get_bit(flags::bit(16), 12) = 1 or get_bit(flags::bit(16), 10) = 1 or get_bit(flags::bit(16), 8) = 1)\n\
     and (\n\
-        (clazz = 12 or clazz = 13 or clazz = 14 or clazz = 15)\n\
-        or (clazz = 17 and get_bit(flags::bit(8), 6) = 1)\n\
+        (kmh = 5 and clazz >= 13 and clazz <= 15)\n\
+        or (kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1)\n\
     );\n\
+-- set all cycleways (foot=yes), footways, services, tracks and paths with bad smoothness,\n\
+-- soft surface, grade3,4,5 to class 4 (unpaved ways)\n\
+update $routing_table_name set kmh=4 where \n\
+    (get_bit(flags::bit(16), 11) = 1 or get_bit(flags::bit(16), 9) = 1 or get_bit(flags::bit(16), 7) = 1)\n\
+    and (\n\
+        (kmh = 3 and clazz = 12)\n\
+        or (kmh = 5 and clazz >= 13 and clazz <= 15)\n\
+        or (kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1)\n\
+    );\n\
+-- set all service roads with name to class 2 (small streets)\n\
+update $routing_table_name set kmh=2 where kmh = 3 and clazz = 12 and get_bit(flags::bit(16), 6) = 1;\n\
+-- set all other cycleways with foot = yes to class 5 (unclassified ways)\n\
+update $routing_table_name set kmh=5 where kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1;\n\
+-- set all ways with foot = no to class 7 (impassable)\n\
+update $routing_table_name set kmh=7 where get_bit(flags::bit(16), 13) = 1;\n\
 \n\
 -- create index\n\
 ALTER TABLE $routing_table_name ADD CONSTRAINT pkey_"$routing_table_name" PRIMARY KEY(id);\n\
@@ -158,8 +170,7 @@ CREATE UNIQUE INDEX way_class_weights_idx ON way_class_weights (id);\n\
 INSERT INTO way_class_weights VALUES (1, 60, 50, 33, 20, 0);\n\
 INSERT INTO way_class_weights VALUES (2, 0, 0, 0, 0, 0);\n\
 INSERT INTO way_class_weights VALUES (3, -60, -50, -33, -20, 0);\n\
-INSERT INTO way_class_weights VALUES (4, -400, -400, -400, -400, -400);\n\
-INSERT INTO way_class_weights VALUES (5, 101, 101, 101, 101, 101);"
+INSERT INTO way_class_weights VALUES (4, 101, 101, 101, 101, 101);"
 echo -e "$commands" >> "$temp_folder/$db_prefix/$routing_table_name.sql"
 
 # import data into database
@@ -309,6 +320,17 @@ if [[ $? != 0 ]]; then
     echo "Can't copy map state file"
     exit 28
 fi
+
+# remove o5m map file
+rm -f "$o5m_osm_file"
+
+# and rename pbf map file
+local_map_version=$(get_local_map_sequence_number)
+if [[ $? != 0 ]]; then
+    echo "Can't get local map state version"
+    exit 28
+fi
+mv "$pbf_osm_file" "${pbf_osm_file:0:-4}.$local_map_version.pbf"
 
 echo -e "\nProductive database created at $(get_timestamp)"
 exit 0

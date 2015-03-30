@@ -16,7 +16,7 @@ osmconvert_file="$tools_folder/osmconvert"
 osmosis_folder="$tools_folder/osmosis"
 osmosis_file="$osmosis_folder/bin/osmosis"
 osm2po_folder="$tools_folder/osm2po"
-osm2po_file="$osm2po_folder/osm2po-core-5.0.0-signed.jar"
+osm2po_file="$osm2po_folder/osm2po-core-5.0.18-signed.jar"
 osm2po_config="$osm2po_folder/osm2po.config"
 
 # logs

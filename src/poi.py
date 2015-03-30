@@ -246,6 +246,13 @@ class POI:
             segment['surface'] = self.translator.translate("surface", tags['surface'])
         if tags.has_key("lanes"):
             segment['lanes'] = tags['lanes']
+        if tags.has_key("width"):
+            segment['width'] = tags['width']
+        if tags.has_key("segregated"):
+            if tags['segregated'] == "yes":
+                segment['segregated'] = 1
+            else:
+                segment['segregated'] = 0
         if tags.has_key("tracktype"):
             segment['tracktype'] = tags['tracktype']
         if tags.has_key("sidewalk"):
