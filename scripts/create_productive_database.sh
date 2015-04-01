@@ -144,6 +144,8 @@ update $routing_table_name set kmh=2 where kmh = 3 and clazz = 12 and get_bit(fl
 update $routing_table_name set kmh=5 where kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1;\n\
 -- set all ways with foot = no to class 7 (impassable)\n\
 update $routing_table_name set kmh=7 where get_bit(flags::bit(16), 13) = 1;\n\
+-- set all ways with access = no and foot != yes to class 7 (impassable)\n\
+update $routing_table_name set kmh=7 where get_bit(flags::bit(16), 4) = 1 AND get_bit(flags::bit(16), 14) = 0;\n\
 \n\
 -- create index\n\
 ALTER TABLE $routing_table_name ADD CONSTRAINT pkey_"$routing_table_name" PRIMARY KEY(id);\n\

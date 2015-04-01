@@ -662,29 +662,42 @@ class RouteFootwayCreator:
         nearest_lines = DBControl().fetch_data("\
                 SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                     ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
-                    from %s WHERE kmh != 7 \
+                    from %s WHERE kmh != 7 AND get_bit(flags::bit(16), 5) = 0 \
                     ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
                 % (lon, lat, self.temp_routing_table_name, lon, lat))
-        # try to prefer impassable ways if the user must cross them to reach destination
+        # try to prefer railways if the user must cross them to reach destination
         if big_street_vertex > -1:
             try:
-                nearest_impassable = DBControl().fetch_data("\
+                nearest_railway = DBControl().fetch_data("\
                         SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                             ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
                             from %s \
-                            WHERE kmh = 7 AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 5.0 \
-                            ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 50" \
+                            WHERE (clazz = 18 OR clazz = 19) \
+                                AND ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) < 5.0 \
+                            ORDER BY ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) LIMIT 1" \
                         % (lon, lat, self.temp_routing_table_name, lon, lat, lon, lat))[0]
-                # test for impassable intersecting way, if exists, add priviously found way, else
+                # which point of the closest way segment is closer to the given start point
+                source_dist = geometry.distance_between_two_points_as_float(
+                        nearest_lines[0]['y1'], nearest_lines[0]['x1'], lat, lon)
+                target_dist = geometry.distance_between_two_points_as_float(
+                        nearest_lines[0]['y2'], nearest_lines[0]['x2'], lat, lon)
+                if source_dist < target_dist:
+                    nearest_lat = nearest_lines[0]['y1']
+                    nearest_lon = nearest_lines[0]['x1']
+                else:
+                    nearest_lat = nearest_lines[0]['y2']
+                    nearest_lon = nearest_lines[0]['x2']
+                # test for impassable railway, if exists, add priviously found way, else
                 # catch IndexError exception
                 nearest_intersecting = DBControl().fetch_data("\
                         SELECT * FROM %s \
-                        WHERE kmh = 7 AND osm_id != %d \
+                        WHERE (clazz = 18 OR clazz = 19)AND osm_id != %d \
                             AND ST_Intersects(geom_way, \
                                 ST_SetSRID(ST_MakeLine(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f)), 4326)) = 't'" \
-                        % (self.temp_routing_table_name, nearest_impassable['osm_id'],
-                            lon, lat, nearest_lines[0]['x1'], nearest_lines[0]['y1']))[0]
-                nearest_lines.insert(0, nearest_impassable)
+                        % (self.temp_routing_table_name, nearest_railway['osm_id'],
+                            lon, lat, nearest_lon, nearest_lat))[0]
+                print "jup     %f   %f" % (nearest_lon, nearest_lat)
+                nearest_lines.insert(0, nearest_railway)
             except IndexError as e:
                 pass
         # try to prefer streets with a max distance of 10 meters
@@ -719,7 +732,9 @@ class RouteFootwayCreator:
                 tuple = RouteFootwayCreator.VertexTuple(line['target'], target_dist,
                         line['osm_id'], line['type'], line['way_distance'], line['osm_name'])
             if index < 7:
-                print "id = %d;   dist = %d: %d/%d,   %d / %s" % (tuple.point_id, line['way_distance'], source_dist, target_dist, line['type'], line['osm_name'])
+                print "id = %d;   dist = %d: %d/%d,   %d / %s (%d)" % (tuple.point_id,
+                        line['way_distance'], source_dist, target_dist, line['type'],
+                        line['osm_name'], line['osm_id'])
             # add id to id list
             if not any(x for x in tuple_list if x.point_id == tuple.point_id):
                 # check if the way is connected to the main street network
