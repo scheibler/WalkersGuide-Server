@@ -526,11 +526,17 @@ class RouteFootwayCreator:
                     % (route_length, number_of_intersections)
 
     def add_point_to_route(self, next_point, next_segment, add_all_intersections=False):
-        # calculate bearing of new segment
+        # calculate distance and bearing of new segment
         try:
             next_segment['bearing'] = geometry.bearing_between_two_points(
                     self.route[-1]['lat'], self.route[-1]['lon'],
                     next_point['lat'], next_point['lon'])
+            next_segment['distance'] = geometry.distance_between_two_points(
+                    self.route[-1]['lat'], self.route[-1]['lon'],
+                    next_point['lat'], next_point['lon'])
+            if next_segment['distance'] == 0 and next_point['type'] == "intersection":
+                self.route[-1] = next_point
+                return
         except IndexError as e:
             # if the route is still empty, add the next route point and exit
             self.route.append(next_point)
