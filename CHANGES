@@ -1,6 +1,6 @@
 Routing server
 
-v0.1.0, 01.09.2014::
+v0.1.0, 01.09.2014:
     - Initial release
     src:
         - webserver interface = 2
@@ -41,4 +41,12 @@ v0.3.0, 30.03.2015:
         - updated add_point_to_route function: Recognizes zigzag in routes
         - newly grouped way classes (added unclassified way)
         - exclude single ways from routing
+
+v0.4.0, 06.05.2015:
+    src:
+        - webserver interface = 4 (ready for SSL connections)
+        - all remaining get method webserver functions changed to post method to enhance privacy
+        - reworked user session management
+    misc:
+        - added Nginx sample config file
 

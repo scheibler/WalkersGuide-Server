@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import google_maps, geometry, helper
+import geometry, helper
 import os, cherrypy, json, math, time
 from py4j.java_gateway import JavaGateway, GatewayClient
 from poi import POI
@@ -91,7 +91,6 @@ class RoutingWebService():
                     "unpaved_ways", "unclassified_ways", "steps"]
         else:
             allowed_way_classes = options['allowed_way_classes']
-        print allowed_way_classes
 
         # blocked way ids
         blocked_ways = []
@@ -101,7 +100,6 @@ class RoutingWebService():
                     blocked_ways.append(int(id))
                 except ValueError as e:
                     pass
-        print blocked_ways
 
         # create session id
         if options.has_key("session_id") == False:
@@ -109,24 +107,17 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         session_id = options['session_id']
         # try to cancel prior request, if necessary
-        if Config().has_session_id(session_id):
-            Config().query_removement_of_session_id(session_id)
-            check_counter = 0
-            while Config().has_session_id(session_id):
-                time.sleep(1)
-                check_counter += 1
-                if check_counter >= 5:
-                    return_tuple['error'] = translator.translate("message", "old_request_still_running")
-                    return helper.zip_data(return_tuple)
-            print "check_counter = %d" % check_counter
+        if Config().clean_old_session(session_id) == False:
+            return_tuple['error'] = translator.translate("message", "old_request_still_running")
+            return helper.zip_data(return_tuple)
+        # this code is onley reached, if the prior session was canceled successfully
         if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         # create route logger object
-        route_logger = RouteLogger("routes", "%s-%s" % (source_route[0]['name'].replace(" ", "."), \
-                source_route[-1]['name'].replace(" ", ".") ))
+        route_logger = RouteLogger("routes", "%s---%s" % (source_route[0]['name'], source_route[-1]['name']))
         # and append the source route
         route_logger.append_to_log("\n----- start of source route -----")
         route_logger.append_to_log( json.dumps( source_route, indent=4, encoding="utf-8") \
@@ -252,27 +243,18 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         session_id = options['session_id']
         # try to cancel prior request
-        if Config().has_session_id(session_id):
-            Config().query_removement_of_session_id(session_id)
-            check_counter = 0
-            while Config().has_session_id(session_id):
-                time.sleep(1)
-                check_counter += 1
-                if check_counter >= 5:
-                    return_tuple['error'] = translator.translate("message", "old_request_still_running")
-                    return helper.zip_data(return_tuple)
-            print "check_counter = %d" % check_counter
+        if Config().clean_old_session(session_id) == False:
+            return_tuple['error'] = translator.translate("message", "old_request_still_running")
+            return helper.zip_data(return_tuple)
         if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         # get a route
-        route_logger = RouteLogger("routes", "%s-way_id.%s"
-                % (start_point['name'].replace(" ", "."), options['way_id']))
+        route_logger = RouteLogger("routes", "%s---way_id.%s" % (start_point['name'], options['way_id']))
         rfc = RouteFootwayCreator(session_id, route_logger, translator, 1.0,
-                ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways",
-                    "steps"], [])
+                ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways", "steps"], [])
         try:
             route = rfc.follow_this_way(start_point,
                     options['way_id'], options['bearing'], add_all_intersections)
@@ -302,10 +284,6 @@ class RoutingWebService():
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         translator = Translator(Config().get_param("default_language"))
-
-        #f = open("/tmp/tr_routes.json", "r")
-        #return_tuple['transport_routes'] = json.loads(f.read())
-        #return helper.zip_data(return_tuple)
 
         # parse json encoded input
         input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
@@ -374,24 +352,16 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         session_id = options['session_id']
         # try to cancel prior request
-        if Config().has_session_id(session_id):
-            Config().query_removement_of_session_id(session_id)
-            check_counter = 0
-            while Config().has_session_id(session_id):
-                time.sleep(1)
-                check_counter += 1
-                if check_counter >= 5:
-                    return_tuple['error'] = translator.translate("message", "old_request_still_running")
-                    return helper.zip_data(return_tuple)
-            print "check_counter = %d" % check_counter
+        if Config().clean_old_session(session_id) == False:
+            return_tuple['error'] = translator.translate("message", "old_request_still_running")
+            return helper.zip_data(return_tuple)
         if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         # create route logger object
-        route_logger = RouteLogger("routes", "%s-%s" % (source_route[0]['name'].replace(" ", "."), \
-                source_route[-1]['name'].replace(" ", ".") ))
+        route_logger = RouteLogger("routes", "public_transport---%s---%s" % (source_route[0]['name'], source_route[-1]['name']))
 
         # parse route parts
         rtc = RouteTransportCreator(session_id, route_logger, translator)
@@ -495,16 +465,9 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         session_id = options['session_id']
         # try to cancel prior request
-        if Config().has_session_id(session_id):
-            Config().query_removement_of_session_id(session_id)
-            check_counter = 0
-            while Config().has_session_id(session_id):
-                time.sleep(1)
-                check_counter += 1
-                if check_counter >= 5:
-                    return_tuple['error'] = translator.translate("message", "old_request_still_running")
-                    return helper.zip_data(return_tuple)
-            print "check_counter = %d" % check_counter
+        if Config().clean_old_session(session_id) == False:
+            return_tuple['error'] = translator.translate("message", "old_request_still_running")
+            return helper.zip_data(return_tuple)
         if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
@@ -524,6 +487,87 @@ class RoutingWebService():
         Config().confirm_removement_of_session_id(session_id)
         return helper.zip_data(return_tuple)
     get_poi.exposed = True
+
+    @cherrypy.tools.json_in()
+    def get_departures(self):
+        # set gzip header
+        cherrypy.response.headers['Content-Type'] = 'application/gzip'
+        # create the return tuple
+        return_tuple = {}
+        return_tuple['departures'] = []
+        return_tuple['warning'] = ""
+        return_tuple['error'] = ""
+        translator = Translator(Config().get_param("default_language"))
+        # parse json encoded input
+        options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+
+        # user language
+        language = ""
+        if options.has_key("language") == True:
+            language = options['language']
+        # if the user sends a language, which is not german, take the default language setting
+        if language != "de":
+            language = Config().get_param("default_language")
+        # initialize the translator object with the user's choosen language
+        translator = Translator(language)
+
+        # check latitude and longitude
+        try:
+            lat = float(options['lat'])
+        except KeyError as e:
+            return_tuple['error'] = translator.translate("message", "no_latitude_value")
+            return helper.zip_data(return_tuple)
+        except ValueError as e:
+            return_tuple['error'] = translator.translate("message", "no_latitude_value")
+            return helper.zip_data(return_tuple)
+        try:
+            lon = float(options['lon'])
+        except KeyError as e:
+            return_tuple['error'] = translator.translate("message", "no_longitude_value")
+            return helper.zip_data(return_tuple)
+        except ValueError as e:
+            return_tuple['error'] = translator.translate("message", "no_longitude_value")
+            return helper.zip_data(return_tuple)
+
+        # get the nearest stations for this coordiantes and take the first one
+        gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
+        main_point = gateway.entry_point
+        station_list = main_point.getNearestStations(
+                geometry.convert_coordinate_to_int(lat),
+                geometry.convert_coordinate_to_int(lon))
+        try:
+            station = station_list.stations[0]
+        except IndexError as e:
+            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
+            return helper.zip_data(return_tuple)
+        if station.id <= 0:
+            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
+            return helper.zip_data(return_tuple)
+
+        # get departures for station
+        departures_result = main_point.getDepartures( station.id)
+        if departures_result.status.toString() == "INVALID_STATION":
+            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
+            return helper.zip_data(return_tuple)
+        if departures_result.status.toString() == "SERVICE_DOWN":
+            return_tuple['error'] = translator.translate("message", "bahn_server_down")
+            return helper.zip_data(return_tuple)
+        date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", gateway.jvm.java.util.Locale.GERMAN)
+        for station_departure in departures_result.stationDepartures:
+            for departure in station_departure.departures:
+                dep_entry = {}
+                dep_entry['nr'] = departure.line.label
+                dep_entry['to'] = departure.destination.name
+                dep_entry['time'] = date_format.format(departure.plannedTime)
+                # remaining time
+                duration = departure.plannedTime.getTime()/1000 - int(time.time())
+                minutes, seconds = divmod(duration, 60)
+                dep_entry['remaining'] = minutes
+                return_tuple['departures'].append(dep_entry)
+
+        # convert return_tuple to json and zip it, before returning
+        return helper.zip_data(return_tuple)
+    get_departures.exposed = True
 
     @cherrypy.tools.json_in()
     def get_bug_report(self):
@@ -591,152 +635,10 @@ class RoutingWebService():
         if options.has_key("session_id") == False:
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
             return helper.zip_data(return_tuple)
-        session_id = options['session_id']
-        print "cancel session id %s" % session_id
-        # try to cancel prior request
-        if Config().has_session_id(session_id):
-            Config().query_removement_of_session_id(session_id)
+        Config().query_removement_of_session_id(options['session_id'])
+        print "cancel session id %s" % options['session_id']
         return helper.zip_data(return_tuple)
     cancel_request.exposed = True
-
-    def get_departures(self, lat=None, lon=None, language=None):
-        # set gzip header
-        cherrypy.response.headers['Content-Type'] = 'application/gzip'
-        # create the return tuple
-        return_tuple = {}
-        return_tuple['departures'] = []
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-
-        # user language
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
-
-        # check latitude and longitude input
-        try:
-            lat = float(lat)
-        except ValueError as e:
-            return_tuple['error'] = translator.translate("message", "no_latitude_value")
-            return helper.zip_data(return_tuple)
-        try:
-            lon = float(lon)
-        except ValueError as e:
-            return_tuple['error'] = translator.translate("message", "no_longitude_value")
-            return helper.zip_data(return_tuple)
-
-        # get the nearest stations for this coordiantes and take the first one
-        gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
-        main_point = gateway.entry_point
-        station_list = main_point.getNearestStations(
-                geometry.convert_coordinate_to_int(lat),
-                geometry.convert_coordinate_to_int(lon))
-        try:
-            station = station_list.stations[0]
-        except IndexError as e:
-            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
-            return helper.zip_data(return_tuple)
-        if station.id <= 0:
-            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
-            return helper.zip_data(return_tuple)
-
-        # get departures for station
-        departures_result = main_point.getDepartures( station.id)
-        if departures_result.status.toString() == "INVALID_STATION":
-            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
-            return helper.zip_data(return_tuple)
-        if departures_result.status.toString() == "SERVICE_DOWN":
-            return_tuple['error'] = translator.translate("message", "bahn_server_down")
-            return helper.zip_data(return_tuple)
-        date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", gateway.jvm.java.util.Locale.GERMAN)
-        for station_departure in departures_result.stationDepartures:
-            for departure in station_departure.departures:
-                dep_entry = {}
-                dep_entry['nr'] = departure.line.label
-                dep_entry['to'] = departure.destination.name
-                dep_entry['time'] = date_format.format(departure.plannedTime)
-                # remaining time
-                duration = departure.plannedTime.getTime()/1000 - int(time.time())
-                minutes, seconds = divmod(duration, 60)
-                dep_entry['remaining'] = "%d Min" % minutes
-                return_tuple['departures'].append(dep_entry)
-
-        # convert return_tuple to json and zip it, before returning
-        return helper.zip_data(return_tuple)
-    get_departures.exposed = True
-
-    def get_coordinates(self, address=None, language=None):
-        # set gzip header
-        cherrypy.response.headers['Content-Type'] = 'application/gzip'
-        # create the return tuple
-        return_tuple = {}
-        return_tuple['coordinates'] = {}
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-
-        # user language
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
-
-        # check address input string
-        if address == None or address == "":
-            return_tuple['error'] = translator.translate("message", "no_address_string")
-            return helper.zip_data(return_tuple)
-
-        # ask google for address coordinates
-        result = google_maps.get_latlon(address)
-        if result != None:
-            return_tuple['coordinates'] = result
-        else:
-            return_tuple['error'] = translator.translate("message", "address_invalid")
-
-        # convert return_tuple to json and zip it, before returning
-        return helper.zip_data(return_tuple)
-    get_coordinates.exposed = True
-
-    def get_address(self, lat=None, lon=None, language=None):
-        # set gzip header
-        cherrypy.response.headers['Content-Type'] = 'application/gzip'
-        # create the return tuple
-        return_tuple = {}
-        return_tuple['address'] = ""
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-
-        # user language
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
-
-        # check latitude and longitude input
-        try:
-            lat = float(lat)
-        except ValueError as e:
-            return_tuple['error'] = translator.translate("message", "no_latitude_value")
-            return helper.zip_data(return_tuple)
-        try:
-            lon = float(lon)
-        except ValueError as e:
-            return_tuple['error'] = translator.translate("message", "no_longitude_value")
-            return helper.zip_data(return_tuple)
-
-        # ask google for an address to  the given coordinates
-        result = google_maps.get_address(lat, lon, True)
-        if result != None:
-            return_tuple['address'] = result
-        else:
-            return_tuple['error'] = translator.translate("message", "no_address_for_this_coordinates")
-
-        # convert return_tuple to json and zip it, before returning
-        return helper.zip_data(return_tuple)
-    get_address.exposed = True
 
     def get_all_supported_poi_tags(self):
         # set gzip header
@@ -759,8 +661,8 @@ class RoutingWebService():
         return_tuple = {}
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        return_tuple['interface'] = 3
-        return_tuple['server'] = "0.3.0"
+        return_tuple['interface'] = 4
+        return_tuple['server'] = "0.4.0"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

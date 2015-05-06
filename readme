@@ -77,8 +77,17 @@ The WalkersGuide-Server project requires some python modules, which should be in
 
 ```
 root# aptitude install python-setuptools
-root# easy_install py4j requests configparser cherrypy psycopg2
+root# easy_install pip
+osm$ pip --user --upgrade install py4j requests configparser cherrypy psycopg2
 ```
+
+### Webserver installation ###
+
+The WalkersGuide Android client since version 0.4.0 requires a secure connection via SSL. Don't use
+cherrypy's own SSL server for that but Install and configure a webserver like nginx instead. The
+webserver should handle the SSL connection and redirect traffic to the WalkersGuide server
+component, which only runs locally at a different port. You can find a sample configuration for nginx
+at misc/nginx-walkersguide.org.conf.
 
 ### configure mail sending ###
 

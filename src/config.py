@@ -129,12 +129,28 @@ class Config:
             if self.session_ids.has_key(id):
                 if self.session_ids[id] == 0:
                     self.session_ids[id] = int(time.time())
-                elif (int(time.time()) - self.session_ids[id]) >= 60:
-                    self.confirm_removement_of_session_id(id)
 
         def confirm_removement_of_session_id(self, id):
             if self.session_ids.has_key(id):
                 self.session_ids.__delitem__(id)
+
+        def clean_old_session(self, id):
+            # clean old sessions first
+            for id in self.session_ids.keys():
+                if self.session_ids[id] > 0:
+                    delay = int(time.time()) - self.session_ids[id]
+                    if delay > 180:
+                        self.confirm_removement_of_session_id(id)
+            # then try to remove prior session id of the particular user
+            self.query_removement_of_session_id(id)
+            # then give the server a few seconds to cancel that session
+            check_counter = 0
+            while self.has_session_id(id):
+                time.sleep(1)
+                check_counter += 1
+                if check_counter == 15:
+                    return False
+            return True
 
         def has_session_id(self, id):
             return self.session_ids.has_key(id)
@@ -144,6 +160,9 @@ class Config:
                 if self.session_ids[id] > 0:
                     return True
             return False
+
+        def get_all_session_ids(self):
+            return self.session_ids.keys()
 
         def number_of_session_ids(self):
             return self.session_ids.keys().__len__()

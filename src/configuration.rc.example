@@ -11,7 +11,7 @@ db_user = wgs_writer
 db_password = password
 
 [webserver_settings]
-host = example.org
+host = 127.0.0.1
 port = 23456
 thread_pool = 10
 
