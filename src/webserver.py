@@ -1,15 +1,17 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import geometry, helper
 import os, cherrypy, json, math, time
 from py4j.java_gateway import JavaGateway, GatewayClient
+
+import geometry, helper
+from config import Config
+from db_control import DBControl
 from poi import POI
-from route_transport_creator import RouteTransportCreator
 from route_footway_creator import RouteFootwayCreator
 from route_logger import RouteLogger
-from db_control import DBControl
-from config import Config
+from route_transport_creator import RouteTransportCreator
+from station_finder import StationFinder
 from translator import Translator 
 
 class RoutingWebService():
@@ -511,7 +513,7 @@ class RoutingWebService():
         # initialize the translator object with the user's choosen language
         translator = Translator(language)
 
-        # check latitude and longitude
+        # check latitude, longitude and vehicles parameters
         try:
             lat = float(options['lat'])
         except KeyError as e:
@@ -528,42 +530,46 @@ class RoutingWebService():
         except ValueError as e:
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
+        try:
+            vehicles = options['vehicles'].split("+")
+        except KeyError as e:
+            vehicles = []
 
-        # get the nearest stations for this coordiantes and take the first one
+        # get the nearest stations for this coordinates and take the first one
         gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
         main_point = gateway.entry_point
-        station_list = main_point.getNearestStations(
+        closest_stations_result = main_point.getNearestStations(
                 geometry.convert_coordinate_to_int(lat),
                 geometry.convert_coordinate_to_int(lon))
-        try:
-            station = station_list.stations[0]
-        except IndexError as e:
+        if closest_stations_result.status.toString() == "INVALID_STATION":
             return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
             return helper.zip_data(return_tuple)
-        if station.id <= 0:
+        if closest_stations_result.status.toString() == "SERVICE_DOWN":
+            return_tuple['error'] = translator.translate("message", "bahn_server_down")
+            return helper.zip_data(return_tuple)
+        if closest_stations_result.locations == None or len(closest_stations_result.locations) == 0:
             return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
             return helper.zip_data(return_tuple)
 
         # get departures for station
+        sfinder = StationFinder(translator)
+        station = sfinder.choose_station_by_vehicle_type(closest_stations_result.locations, lat, lon, vehicles)
         departures_result = main_point.getDepartures( station.id)
-        if departures_result.status.toString() == "INVALID_STATION":
-            return_tuple['error'] = translator.translate("message", "no_station_for_this_coordinates")
-            return helper.zip_data(return_tuple)
-        if departures_result.status.toString() == "SERVICE_DOWN":
-            return_tuple['error'] = translator.translate("message", "bahn_server_down")
-            return helper.zip_data(return_tuple)
         date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", gateway.jvm.java.util.Locale.GERMAN)
         for station_departure in departures_result.stationDepartures:
             for departure in station_departure.departures:
-                dep_entry = {}
-                dep_entry['nr'] = departure.line.label
-                dep_entry['to'] = departure.destination.name
-                dep_entry['time'] = date_format.format(departure.plannedTime)
-                # remaining time
-                duration = departure.plannedTime.getTime()/1000 - int(time.time())
-                minutes, seconds = divmod(duration, 60)
-                dep_entry['remaining'] = minutes
-                return_tuple['departures'].append(dep_entry)
+                try:
+                    dep_entry = {}
+                    dep_entry['nr'] = "%s%s" % (departure.line.product.code, departure.line.label)
+                    dep_entry['to'] = departure.destination.name
+                    dep_entry['time'] = date_format.format(departure.plannedTime)
+                    # remaining time
+                    duration = departure.plannedTime.getTime()/1000 - int(time.time())
+                    minutes, seconds = divmod(duration, 60)
+                    dep_entry['remaining'] = minutes
+                    return_tuple['departures'].append(dep_entry)
+                except Exception as e:
+                    pass
 
         # convert return_tuple to json and zip it, before returning
         return helper.zip_data(return_tuple)
@@ -645,9 +651,10 @@ class RoutingWebService():
         cherrypy.response.headers['Content-Type'] = 'application/gzip'
         # create the return tuple
         return_tuple = {}
-        return_tuple['supported_poi_tags'] = "favorites+transport+food+tourism+shop+health" \
-                "+entertainment+finance+education+public_service+named_intersection+other_intersection" \
-                "+traffic_signals+trash"
+        return_tuple['supported_poi_tags'] = "favorites" \
+                "+transport_bus_tram+transport_train_lightrail_subway+transport_airport_ferry_aerialway+transport_taxi" \
+                "+food+entertainment+tourism+nature+finance+shop+health+education+public_service+all_buildings_with_name" \
+                "+surveillance+bench+trash+bridge+named_intersection+other_intersection+pedestrian_crossings"
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
         # convert return_tuple to json and zip it, before returning
@@ -661,8 +668,8 @@ class RoutingWebService():
         return_tuple = {}
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        return_tuple['interface'] = 4
-        return_tuple['server'] = "0.4.0"
+        return_tuple['interface'] = 5
+        return_tuple['server'] = "0.5.0"
         # try to get map version
         return_tuple['map_version'] = ""
         map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")

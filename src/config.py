@@ -123,49 +123,40 @@ class Config:
 
         # session id management functions
         def add_session_id(self, id):
-            self.session_ids[id] = 0
+            self.session_ids[id] = {"to_be_removed":False, "created_at":int(time.time())}
 
         def query_removement_of_session_id(self, id):
-            if self.session_ids.has_key(id):
-                if self.session_ids[id] == 0:
-                    self.session_ids[id] = int(time.time())
+            if id in self.session_ids:
+                self.session_ids[id]['to_be_removed'] = True
 
         def confirm_removement_of_session_id(self, id):
-            if self.session_ids.has_key(id):
-                self.session_ids.__delitem__(id)
+            if id in self.session_ids:
+                self.session_ids.pop(id)
 
         def clean_old_session(self, id):
-            # clean old sessions first
-            for id in self.session_ids.keys():
-                if self.session_ids[id] > 0:
-                    delay = int(time.time()) - self.session_ids[id]
-                    if delay > 180:
-                        self.confirm_removement_of_session_id(id)
+            # first clean all sessions, which are older then 3 minutes
+            for old_id in self.session_ids.keys():
+                delay = int(time.time()) - self.session_ids[old_id]['created_at']
+                if delay > 180:
+                    self.confirm_removement_of_session_id(old_id)
             # then try to remove prior session id of the particular user
             self.query_removement_of_session_id(id)
             # then give the server a few seconds to cancel that session
             check_counter = 0
-            while self.has_session_id(id):
+            while id in self.session_ids:
                 time.sleep(1)
                 check_counter += 1
                 if check_counter == 15:
                     return False
             return True
 
-        def has_session_id(self, id):
-            return self.session_ids.has_key(id)
-
         def has_session_id_to_remove(self, id):
-            if self.session_ids.has_key(id):
-                if self.session_ids[id] > 0:
-                    return True
+            if id in self.session_ids:
+                return self.session_ids[id]['to_be_removed']
             return False
 
-        def get_all_session_ids(self):
-            return self.session_ids.keys()
-
         def number_of_session_ids(self):
-            return self.session_ids.keys().__len__()
+            return len(self.session_ids.keys())
 
     # storage for the instance reference
     __instance = None

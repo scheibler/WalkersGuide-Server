@@ -1,14 +1,16 @@
 import java.io.IOException;
-import java.util.List;
 import java.util.Date;
+import java.util.EnumSet;
+import java.util.List;
 
 import de.schildbach.pte.BahnProvider;
 import de.schildbach.pte.NetworkProvider;
 import de.schildbach.pte.NetworkProvider.Accessibility;
+import de.schildbach.pte.NetworkProvider.Optimize;
 import de.schildbach.pte.NetworkProvider.WalkSpeed;
 import de.schildbach.pte.dto.Location;
 import de.schildbach.pte.dto.LocationType;
-import de.schildbach.pte.dto.NearbyStationsResult;
+import de.schildbach.pte.dto.NearbyLocationsResult;
 import de.schildbach.pte.dto.Product;
 import de.schildbach.pte.dto.QueryDeparturesResult;
 import de.schildbach.pte.dto.QueryTripsResult;
@@ -22,24 +24,30 @@ public class QueryData {
     }
 
     public Location createAddressObject(int latitude, int longitude) {
-        return new Location(LocationType.ADDRESS, latitude, longitude);
+        return new Location(LocationType.ADDRESS, null, latitude, longitude);
     }
 
     public QueryTripsResult calculateConnection(Location from, Location to, int delay) {
         Date departureDate = new Date( System.currentTimeMillis() + delay*60000 );
         try {
             QueryTripsResult result = provider.queryTrips(
-                    from, null, to, departureDate, true, Product.ALL,
+                    from, null, to, departureDate, true, Product.ALL, Optimize.LEAST_CHANGES,
                     WalkSpeed.SLOW, Accessibility.NEUTRAL, null);
             // try to get some more trips
-            if (result.context.canQueryLater()) {
+            if (result != null && result.context.canQueryLater()) {
                 QueryTripsResult laterResult = provider.queryMoreTrips(result.context, true);
-                for (int i=0; i<laterResult.trips.size(); i++) {
-                    result.trips.add(laterResult.trips.get(i));
+                if (laterResult != null) {
+                    for (int i=0; i<laterResult.trips.size(); i++) {
+                        result.trips.add(laterResult.trips.get(i));
+                    }
                 }
             }
             return result;
         } catch (IOException e) {
+            return null;
+        } catch (IllegalStateException e) {
+            return null;
+        } catch (NullPointerException e) {
             return null;
         }        
     }
@@ -53,9 +61,10 @@ public class QueryData {
         }        
     }
 
-    public NearbyStationsResult getNearestStations(int latitude, int longitude) {
+    public NearbyLocationsResult getNearestStations(int latitude, int longitude) {
         try {
-            return provider.queryNearbyStations(new Location(LocationType.ADDRESS, latitude, longitude), 0, 0);
+            return provider.queryNearbyLocations(
+                    EnumSet.of(LocationType.STATION), Location.coord(latitude, longitude), 0, 0);
         } catch (IOException e) {
             return null;
         }        

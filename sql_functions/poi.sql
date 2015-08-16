@@ -15,18 +15,12 @@ BEGIN
         return true;
     ELSIF tags->'railway' = 'station' THEN
         return true;
-    ELSIF tags->'building' = 'station' THEN
+    ELSIF tags->'amenity' = 'ferry_terminal' THEN
+        return true;
+    ELSIF tags->'aerialway' = 'station' THEN
         return true;
     ELSIF tags->'public_transport' = 'stop_position' THEN
-        IF tags->'bus' = 'yes' THEN
-            return true;
-        ELSIF tags->'subway' = 'yes' THEN
-            return true;
-        ELSIF tags->'tram' = 'yes' THEN
-            return true;
-        ELSIF tags->'ferry' = 'yes' THEN
-            return true;
-        END IF;
+        return true;
     END IF;
     return false;
 END;
@@ -38,6 +32,7 @@ DECLARE
     poi_id bigint;
     s_id bigint;
     number_of_lines int;
+    route_ref text;
     row RECORD;
 BEGIN
     poi_id := $1;
@@ -45,9 +40,24 @@ BEGIN
     number_of_lines := 0;
     FOR row IN SELECT rs.id, rs.tags->'ref' as nr, rs.tags->'to' as direction, rs.tags->'route' as type
             from relations  rs JOIN relation_members rm ON rs.id = rm.relation_id
-            where rs.tags->'type' = 'route' AND rs.tags->'ref' != '' AND rm.member_id = s_id
+            WHERE rs.tags->'route' = ANY('{"bus", "trolleybus", "ferry", "train", "tram", "subway", "monorail", "aerialway"}')
+                AND rs.tags->'type' = 'route' AND rm.member_id = s_id
     LOOP
-        INSERT INTO transport_lines VALUES(poi_id, row.id, row.nr, row.direction, row.type);
+        IF row.nr IS NULL OR row.nr = '' THEN
+            BEGIN
+                SELECT rs.tags->'ref' INTO STRICT route_ref
+                        FROM relations rs JOIN relation_members  rm ON rs.id = rm.relation_id
+                        WHERE rm.member_id = row.id;
+                EXCEPTION
+                    WHEN NO_DATA_FOUND THEN
+                        CONTINUE;
+                    WHEN TOO_MANY_ROWS THEN
+                        CONTINUE;
+            END;
+        ELSE
+            route_ref := row.nr;
+        END IF;
+        INSERT INTO transport_lines VALUES(poi_id, row.id, route_ref, row.direction, row.type);
         number_of_lines := number_of_lines + 1;
     END LOOP;
     return number_of_lines;
@@ -140,11 +150,9 @@ BEGIN
     -- first, collect subway entrances
     -- check if station has a subway
     is_subway := false;
-    IF poi_tags->'railway' = 'halt' THEN
+    IF poi_tags->'railway' = 'halt' AND poi_tags->'subway' = 'yes' THEN
         is_subway := true;
-    ELSIF poi_tags->'railway' = 'station' THEN
-        is_subway := true;
-    ELSIF poi_tags->'building' = 'station' THEN
+    ELSIF poi_tags->'railway' = 'station' AND poi_tags->'subway' = 'yes' THEN
         is_subway := true;
     ELSIF poi_tags->'public_transport' = 'stop_position' AND poi_tags->'subway' = 'yes' THEN
         is_subway := true;
@@ -392,7 +400,7 @@ BEGIN
         -- try to find building or relation for node
         start_outer := clock_timestamp();
         building_id_to_insert := 0;
-        IF row.tags->'highway' != '' OR row.tags->'crossing' != '' THEN
+        IF row.tags ? 'highway' THEN
             relation_ids := '{ 0, 0}';
         ELSE
             start_tmp := clock_timestamp();
@@ -428,31 +436,6 @@ BEGIN
         -- get entrances if we found a building
         start_entrance := clock_timestamp();
         SELECT get_number_of_entrances(unique_poi_id, relation_ids[1], relation_ids[2], row.tags, row.geom) INTO number_of_entrances_to_insert;
-        --number_of_entrances_to_insert := 0;
-        --IF building_id_to_insert > 0 THEN
-        --    start_tmp := clock_timestamp();
-        --    SELECT relation_id INTO tmp_bigint_value from outer_buildings WHERE id = building_id_to_insert;
-        --    end_tmp := clock_timestamp();
-        --    delta_entcheck1 := delta_entcheck1 + ( extract(epoch from end_tmp) - extract(epoch from start_tmp) );
-        --    IF tmp_bigint_value IS NOT NULL THEN
-        --        start_tmp := clock_timestamp();
-        --        SELECT get_number_of_entrances_from_relation(unique_poi_id, tmp_bigint_value) INTO tmp_bigint_value;
-        --        number_of_entrances_to_insert := number_of_entrances_to_insert + tmp_bigint_value;
-        --        end_tmp := clock_timestamp();
-        --        delta_entrel := delta_entrel + ( extract(epoch from end_tmp) - extract(epoch from start_tmp) );
-        --    END IF;
-        --    start_tmp := clock_timestamp();
-        --    SELECT building_id INTO tmp_bigint_value from outer_buildings WHERE id = building_id_to_insert;
-        --    end_tmp := clock_timestamp();
-        --    delta_entcheck2 := delta_entcheck2 + ( extract(epoch from end_tmp) - extract(epoch from start_tmp) );
-        --    IF tmp_bigint_value IS NOT NULL THEN
-        --        start_tmp := clock_timestamp();
-        --        SELECT get_number_of_entrances_from_building(unique_poi_id, tmp_bigint_value, row.geom) INTO tmp_bigint_value;
-        --        number_of_entrances_to_insert := number_of_entrances_to_insert + tmp_bigint_value;
-        --        end_tmp := clock_timestamp();
-        --        delta_entbui := delta_entbui + ( extract(epoch from end_tmp) - extract(epoch from start_tmp) );
-        --    END IF;
-        --END IF;
         end_entrance := clock_timestamp();
         delta_entrance := delta_entrance + ( extract(epoch from end_entrance) - extract(epoch from start_entrance) );
 
@@ -462,13 +445,11 @@ BEGIN
         IF result THEN
             -- transport lines
             SELECT get_number_of_public_transport_lines_at_station(unique_poi_id, row.id) INTO number_of_lines_to_insert;
-            -- subway entrances
-            --SELECT get_number_of_tmp_subway_entrances(unique_poi_id, row.tags, row.geom) INTO tmp_bigint_value;
-            --number_of_entrances_to_insert := number_of_entrances_to_insert + tmp_bigint_value;
             -- insert into stations table
             INSERT INTO stations VALUES( unique_poi_id, row.id, 'N', row.tags, building_id_to_insert,
                 number_of_entrances_to_insert, number_of_lines_to_insert, row.geom);
         ELSE
+            -- insert into poi table
             INSERT INTO poi VALUES( unique_poi_id, row.id, 'N', row.tags, building_id_to_insert,
                 number_of_entrances_to_insert, row.geom);
         END IF;

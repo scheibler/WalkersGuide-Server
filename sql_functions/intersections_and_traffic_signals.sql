@@ -139,12 +139,19 @@ BEGIN
                     IF number_of_streets > 2 THEN
                         -- filter the duplicated street names
                         SELECT ARRAY(SELECT DISTINCT UNNEST(street_names) a) AS unique_values INTO street_names;
-                        IF array_length(street_names, 1) > 0 THEN
+                        IF array_length(street_names, 1) > 0 AND array_length(street_types, 1) > 0 THEN
                             intersection_name := array_to_string(street_names, ', ') || ', ' || array_to_string(street_types, ', ');
-                            number_of_streets_with_name := array_length(street_names, 1);
-                        ELSE
+                        ELSIF array_length(street_names, 1) > 0 THEN
+                            intersection_name := array_to_string(street_names, ', ');
+                        ELSIF array_length(street_types, 1) > 0 THEN
                             intersection_name := array_to_string(street_types, ', ');
-                            number_of_streets_with_name := 0;
+                        ELSE
+                            intersection_name := '';
+                        END IF;
+                        -- number of streets with name
+                        number_of_streets_with_name := 0;
+                        IF array_length(street_names, 1) > 0 THEN
+                            number_of_streets_with_name := array_length(street_names, 1);
                         END IF;
                         -- get geom for intersection
                         BEGIN
@@ -172,6 +179,8 @@ BEGIN
                 number_of_streets := number_of_streets + 1;
                 IF row.way_tags->'name' != '' THEN
                     street_names := array_append(street_names, row.way_tags->'name'::text);
+                ELSIF row.way_tags->'ref' != '' THEN
+                    street_names := array_append(street_names, row.way_tags->'ref'::text);
                 ELSIF row.way_tags->'highway' != '' THEN
                     IF row.way_tags->'tracktype' != '' THEN
                         street_types := array_append(street_types, row.highway::text
@@ -231,16 +240,16 @@ ALTER TABLE ONLY intersection_data ADD CONSTRAINT pk_intersection_data PRIMARY K
 CREATE INDEX idx_intersection_data_intersection_id ON intersection_data USING btree (id);
 ANALYSE intersection_data;
 
--- traffic signals
-CREATE TEMP TABLE tmp_traffic_signals AS SELECT * FROM nodes LIMIT 0;
-\copy tmp_traffic_signals FROM 'traffic_signals.txt'
-ALTER TABLE ONLY tmp_traffic_signals ADD CONSTRAINT pk_tmp_traffic_signals PRIMARY KEY (id);
-CREATE INDEX idx_tmp_traffic_signals_geom ON tmp_traffic_signals USING gist (geom);
-CLUSTER tmp_traffic_signals USING idx_tmp_traffic_signals_geom;
-ANALYSE tmp_traffic_signals;
+-- pedestrian crossings
+CREATE TEMP TABLE tmp_pedestrian_crossings AS SELECT * FROM nodes LIMIT 0;
+\copy tmp_pedestrian_crossings FROM 'pedestrian_crossings.txt'
+ALTER TABLE ONLY tmp_pedestrian_crossings ADD CONSTRAINT pk_tmp_pedestrian_crossings PRIMARY KEY (id);
+CREATE INDEX idx_tmp_pedestrian_crossings_geom ON tmp_pedestrian_crossings USING gist (geom);
+CLUSTER tmp_pedestrian_crossings USING idx_tmp_pedestrian_crossings_geom;
+ANALYSE tmp_pedestrian_crossings;
 
-DROP TABLE IF EXISTS traffic_signals;
-CREATE TABLE traffic_signals(
+DROP TABLE IF EXISTS pedestrian_crossings;
+CREATE TABLE pedestrian_crossings(
     id bigint NOT NULL,
     crossing_street_name text,
     way_id bigint,
@@ -252,62 +261,72 @@ CREATE TABLE traffic_signals(
 do $$
 DECLARE
     signals_row record;
-    intersection_row record;
+    signals_intersection_id bigint;
     signals_way_id bigint;
     signals_way_name text;
-    intersection_near_by int;
+    signals_way_ref text;
     processed_signals int;
 BEGIN
     processed_signals := 0;
-    FOR signals_row IN SELECT id, tags, geom FROM tmp_traffic_signals
+    FOR signals_row IN SELECT id, tags, geom FROM tmp_pedestrian_crossings
     LOOP
-        WITH closest_ways AS (
-            SELECT way_id from way_nodes  where node_id = signals_row.id
-        )
-        SELECT w.id, w.tags->'name' INTO signals_way_id, signals_way_name
-            FROM closest_ways cw JOIN ways w ON cw.way_id = w.id
-            where tags->'name' != '' LIMIT 1;
-        IF signals_way_id IS NULL THEN
-            signals_way_id := 0;
-        END IF;
-        intersection_near_by := 0;
-        FOR intersection_row IN
-            with closest_intersections as (
-                SELECT * from intersections where number_of_streets_with_name > 0
-                    ORDER BY geom <-> signals_row.geom LIMIT 10
+        -- find corresponding way id and name
+        BEGIN
+            WITH closest_ways AS (
+                SELECT way_id from way_nodes  where node_id = signals_row.id
             )
-            SELECT * FROM closest_intersections
-                WHERE ST_DISTANCE(geom, signals_row.geom) < 25.0
-        LOOP
-            intersection_near_by := 1;
-            IF intersection_row.number_of_streets_with_name = 1 AND intersection_row.id = signals_row.id THEN
-                INSERT INTO traffic_signals VALUES(signals_row.id, signals_way_name,
-                    signals_way_id, intersection_row.id, signals_row.tags, signals_row.geom);
-            END IF;
-            IF intersection_row.number_of_streets_with_name > 1 AND intersection_row.id != signals_row.id THEN
-                IF EXISTS(SELECT * FROM intersection_data
-                    WHERE id = intersection_row.id AND way_id = signals_way_id) THEN
-                    INSERT INTO traffic_signals VALUES(signals_row.id, signals_way_name,
-                        signals_way_id, intersection_row.id, signals_row.tags, signals_row.geom);
-                END IF;
-            END IF;
-        END LOOP;
-        IF intersection_near_by = 0 THEN
-            INSERT INTO traffic_signals VALUES(signals_row.id, signals_way_name,
-                signals_way_id, 0, signals_row.tags, signals_row.geom);
+            SELECT w.id, w.tags->'name', w.tags->'ref'
+                INTO STRICT signals_way_id, signals_way_name, signals_way_ref
+                FROM closest_ways cw JOIN ways w ON cw.way_id = w.id
+                WHERE (w.tags ? 'name' OR w.tags ? 'ref')
+                    and w.tags->'highway' = ANY('{"primary", "primary_link", "secondary", "secondary_link",
+                        "tertiary", "tertiary_link", "road", "residential", "unclassified", "living_street"}');
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                signals_way_id := 0;
+                signals_way_name := null;
+                signals_way_ref := null;
+            WHEN TOO_MANY_ROWS THEN
+                signals_way_id := 0;
+                signals_way_name := null;
+                signals_way_ref := null;
+        END;
+
+        -- find intersection for crossing
+        BEGIN
+            WITH closest_intersections AS (
+                SELECT * FROM intersections ORDER BY geom <-> signals_row.geom LIMIT 20
+            )
+            SELECT id INTO STRICT signals_intersection_id FROM closest_intersections 
+                WHERE ST_DISTANCE(geom::geography, signals_row.geom::geography) < 30.0
+                    AND number_of_streets_with_name > 1 LIMIT 1;
+        EXCEPTION
+            WHEN NO_DATA_FOUND THEN
+                signals_intersection_id := 0;
+            WHEN TOO_MANY_ROWS THEN
+                signals_intersection_id := 0;
+        END;
+
+        -- insert into pedestrian_crossings table
+        IF signals_way_name IS NOT NULL THEN
+            INSERT INTO pedestrian_crossings VALUES(signals_row.id, signals_way_name,
+                    signals_way_id, signals_intersection_id, signals_row.tags, signals_row.geom);
+        ELSE
+            INSERT INTO pedestrian_crossings VALUES(signals_row.id, signals_way_ref,
+                    signals_way_id, signals_intersection_id, signals_row.tags, signals_row.geom);
         END IF;
         IF (processed_signals % 25000) = 0 THEN
-            RAISE WARNING '% traffic signals processed at %', processed_signals, to_char(clock_timestamp(), 'HH24:MI:SS');
+            RAISE WARNING '% pedestrian crossings processed at %', processed_signals, to_char(clock_timestamp(), 'HH24:MI:SS');
         END IF;
         processed_signals := processed_signals + 1;
     END LOOP;
 END $$;
 
-ALTER TABLE ONLY traffic_signals ADD CONSTRAINT pk_traffic_signals PRIMARY KEY (id, intersection_id);
-CREATE INDEX idx_traffic_signals_intersection_id ON traffic_signals USING btree (intersection_id);
-CREATE INDEX idx_traffic_signals_geom ON traffic_signals USING gist (geom);
-CLUSTER traffic_signals USING idx_traffic_signals_geom;
-ANALYSE traffic_signals;
+ALTER TABLE ONLY pedestrian_crossings ADD CONSTRAINT pk_pedestrian_crossings PRIMARY KEY (id, intersection_id);
+CREATE INDEX idx_pedestrian_crossings_intersection_id ON pedestrian_crossings USING btree (intersection_id);
+CREATE INDEX idx_pedestrian_crossings_geom ON pedestrian_crossings USING gist (geom);
+CLUSTER pedestrian_crossings USING idx_pedestrian_crossings_geom;
+ANALYSE pedestrian_crossings;
 
 -- update number_of_traffic_signals column of the intersections table
 do $$
@@ -315,7 +334,7 @@ DECLARE
     row record;
 BEGIN
     FOR row IN SELECT distinct on (intersection_id) count(*) AS number_of_signals, intersection_id
-        from traffic_signals  group by intersection_id
+        FROM pedestrian_crossings WHERE intersection_id > 0 GROUP BY intersection_id
     LOOP
         UPDATE intersections SET number_of_traffic_signals = row.number_of_signals
             WHERE id = row.intersection_id;
@@ -327,3 +346,4 @@ DECLARE
 BEGIN
     RAISE WARNING 'Ready at %', to_char(clock_timestamp(), 'HH24:MI:SS');
 END $$;
+

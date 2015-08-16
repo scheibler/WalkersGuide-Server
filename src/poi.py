@@ -32,12 +32,12 @@ class POI:
             search_poi += "LOWER(tags->'addr:street') LIKE '%%%s%%' or " % search
             search_poi += "LOWER(tags->'street') LIKE '%%%s%%'" % search
             search_poi += ")"
-            search_traffic_signals = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
+            search_pedestrian_crossings = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
             search_other = "LOWER(name) LIKE '%%%s%%'" % search
         else:
             boundaries = geometry.get_boundary_box(lat, lon, radius)
             search_poi = ""
-            search_traffic_signals = ""
+            search_pedestrian_crossings = ""
             search_other = ""
 
         # intersections
@@ -67,8 +67,8 @@ class POI:
                 intersection = self.create_intersection(intersection_id, row['lat'], row['lon'], row['name'], intersection_tags, row['number_of_streets'],
                         row['number_of_streets_with_name'], row['number_of_traffic_signals'])
                 poi_list = self.insert_into_poi_list(poi_list, intersection, lat, lon)
-                # prevent accidental queries with more than 1000 results
-                if poi_list.__len__() > 1000:
+                # prevent accidental queries with more than 500 results
+                if poi_list.__len__() > 500:
                     break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
@@ -94,13 +94,26 @@ class POI:
             for row in result:
                 station_id = int(row['id'])
                 osm_id = int(row['osm_id'])
-                station_tags = self.parse_hstore_column(row['tags'])
                 outer_building_id = int(row['outer_building_id'])
+                station_tags = self.parse_hstore_column(row['tags'])
+                if "name" not in station_tags:
+                    # a station without a name is not very usefull
+                    continue
+                if "public_transport" not in station_tags:
+                    # legacy mode for stations without stop_position
+                    existance_check = DBControl().fetch_data("" \
+                            "SELECT exists(SELECT 1 FROM stations WHERE %s " \
+                                "and tags->'name' = '%s' and tags ? 'public_transport') as exists" \
+                            % (where_clause, station_tags['name']))[0]
+                    if existance_check['exists']:
+                        # the station already is represented by another one with the same name
+                        # and a stop_position tag, so skip this one
+                        continue
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
                 poi_list = self.insert_into_poi_list(poi_list, station, lat, lon)
-                # prevent accidental queries with more than 1000 results
-                if poi_list.__len__() > 1000:
+                # prevent accidental queries with more than 500 results
+                if poi_list.__len__() > 500:
                     break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
@@ -130,8 +143,8 @@ class POI:
                 outer_building_id = int(row['outer_building_id'])
                 poi = self.create_poi(poi_id, osm_id, row['lat'], row['lon'], poi_tags, outer_building_id, row['number_of_entrances'])
                 poi_list = self.insert_into_poi_list(poi_list, poi, lat, lon)
-                # prevent accidental queries with more than 1000 results
-                if poi_list.__len__() > 1000:
+                # prevent accidental queries with more than 500 results
+                if poi_list.__len__() > 500:
                     break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
@@ -141,26 +154,25 @@ class POI:
             if self.hide_log_messages == False:
                 print "poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
-        # traffic signals
-        if tags['traffic_signals'] != "":
+        # pedestrian crossings
+        if tags['pedestrian_crossings'] != "":
             t1 = time.time()
             where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
             if search_poi != "":
-                where_clause += " AND %s" % search_traffic_signals
+                where_clause += " AND %s" % search_pedestrian_crossings
             result = DBControl().fetch_data("" \
                     "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name " \
-                        "FROM traffic_signals WHERE %s;" % where_clause)
+                        "FROM pedestrian_crossings WHERE %s;" % where_clause)
             t2 = time.time()
             for row in result:
                 signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), 0, 0)
-                signal['name'] = self.translator.translate("highway", "traffic_signals")
-                if row['crossing_street_name'] != "":
+                if row['crossing_street_name'] != None:
                     signal['name'] += ": %s" % row['crossing_street_name']
                 poi_list = self.insert_into_poi_list(poi_list, signal, lat, lon)
-                # prevent accidental queries with more than 1000 results
-                if poi_list.__len__() > 1000:
+                # prevent accidental queries with more than 500 results
+                if poi_list.__len__() > 500:
                     break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
@@ -168,7 +180,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "traffic signals gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print "pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         te = time.time()
         if self.hide_log_messages == False:
@@ -315,16 +327,16 @@ class POI:
             return intersection
 
         # traffic lights
-        intersection['traffic_signal_list'] = []
+        intersection['pedestrian_crossing_list'] = []
         if number_of_traffic_signals > 0:
             result = DBControl().fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
-                    from traffic_signals where intersection_id = %d" % osm_id)
+                    from pedestrian_crossings where intersection_id = %d" % osm_id)
             for row in result:
                 signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), 0, 0)
-                signal['name'] = "%s (%s)" % (self.translator.translate("highway", "traffic_signals"),
-                        row['crossing_street_name'])
-                intersection['traffic_signal_list'].append(signal)
+                if row['crossing_street_name'] != None:
+                    signal['name'] += ": %s" % row['crossing_street_name']
+                intersection['pedestrian_crossing_list'].append(signal)
 
         # intersection specific properties
         intersection['name'] = ""
@@ -339,10 +351,15 @@ class POI:
         intersection['sub_type'] = self.translator.translate("crossing", "unknown")
         if tags.has_key("crossing"):
             intersection['sub_type'] = self.translator.translate("crossing", tags['crossing'])
+        elif tags.has_key("highway") and tags['highway'] == "crossing" \
+                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
+            intersection['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
         elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
             intersection['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif intersection['traffic_signal_list'].__len__() > 0:
-            intersection['sub_type'] = self.translator.translate("highway", "traffic_signals")
+        elif tags.has_key("railway") and tags['railway'] == "crossing":
+            intersection['sub_type'] = self.translator.translate("railway", "crossing")
+        elif intersection['pedestrian_crossing_list'].__len__() > 0:
+            intersection['sub_type'] = self.translator.translate("crossing", "traffic_signals")
 
         # streets
         intersection['sub_points'] = []
@@ -412,6 +429,7 @@ class POI:
                 poi['address'] = address2
             else:
                 poi['address'] = address1
+
         # type and subtype
         poi['type'] = "poi"
         poi['sub_type'] = ""
@@ -424,6 +442,8 @@ class POI:
                         self.translator.translate("vending", tags['vending']))
             else:
                 poi['sub_type'] = self.translator.translate("amenity", tags['amenity'])
+        elif tags.has_key("bridge"):
+            poi['sub_type'] = self.translator.translate("bridge", tags['bridge'])
         elif tags.has_key("tourism"):
             poi['sub_type'] = self.translator.translate("tourism", tags['tourism'])
         elif tags.has_key("historic"):
@@ -434,10 +454,14 @@ class POI:
                         self.translator.translate("sport", tags['sport']))
             else:
                 poi['sub_type'] = self.translator.translate("leisure", tags['leisure'])
+        elif tags.has_key("man_made"):
+            poi['sub_type'] = self.translator.translate("man_made", tags['man_made'])
         elif tags.has_key("natural"):
             poi['sub_type'] = self.translator.translate("natural", tags['natural'])
         elif tags.has_key("shop"):
             poi['sub_type'] = self.translator.translate("shop", tags['shop'])
+        elif tags.has_key("aeroway"):
+            poi['sub_type'] = self.translator.translate("aeroway", tags['aeroway'])
         elif tags.has_key("building"):
             if tags['building'] == "yes":
                 poi['sub_type'] = self.translator.translate("building", "building")
@@ -445,20 +469,21 @@ class POI:
                 poi['sub_type'] = self.translator.translate("building", tags['building'])
         elif poi.has_key("address") == True:
             poi['sub_type'] = self.translator.translate("poi", "address")
-        if tags.has_key("highway") and tags['highway'] == "traffic_signals":
+        elif tags.has_key("crossing"):
+            poi['sub_type'] = self.translator.translate("crossing", tags['crossing'])
+        elif tags.has_key("highway") and tags['highway'] == "crossing" \
+                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
+            poi['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
+        elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
             poi['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif tags.has_key("crossing") and tags['crossing'] == "traffic_signals":
-            poi['sub_type'] = self.translator.translate("highway", "pedestrian_traffic_signals")
-            signals_class = 0
-            if tags.has_key("traffic_signals:sound") and tags['traffic_signals:sound'] == "yes":
-                signals_class += 1
-            if tags.has_key("traffic_signals:vibration") and tags['traffic_signals:vibration'] == "yes":
-                signals_class += 2
-            if signals_class > 0:
-                poi['traffic_signals_accessibility'] = signals_class
+        elif tags.has_key("railway") and tags['railway'] == "crossing":
+            poi['sub_type'] = self.translator.translate("railway", "crossing")
+
         # name
         if tags.has_key("name"):
             poi['name'] = tags['name']
+        elif tags.has_key("description"):
+            poi['name'] = tags['description']
         elif tags.has_key("operator"):
             poi['name'] = tags['operator']
         elif tags.has_key("ref"):
@@ -467,6 +492,19 @@ class POI:
             poi['name'] = poi['address']
         else:
             poi['name'] = poi['sub_type']
+
+        # traffic signals attributes
+        if tags.has_key("traffic_signals:sound"):
+            if tags['traffic_signals:sound'] == "no":
+                poi['traffic_signals_sound'] = 0
+            if tags['traffic_signals:sound'] == "yes":
+                poi['traffic_signals_sound'] = 1
+        if tags.has_key("traffic_signals:vibration"):
+            if tags['traffic_signals:vibration'] == "no":
+                poi['traffic_signals_vibration'] = 0
+            if tags['traffic_signals:vibration'] == "yes":
+                poi['traffic_signals_vibration'] = 1
+
         # contact
         if tags.has_key("contact:website"):
             poi['website'] = tags['contact:website']
@@ -624,85 +662,160 @@ class POI:
         tags['intersection'] = ""
         tags['station'] = ""
         tags['poi'] = ""
-        tags['traffic_signals'] = ""
+        tags['pedestrian_crossings'] = ""
 
         # prepare tag list
         if type(tag_list) != type([]):
             tag_list = [tag_list]
 
         for t in tag_list:
-            if t in ["transport", "transportation_class_1"]:
+            if t == "transportation_class_1":
                 tags['station'] += " or (" \
-                        "tags->'highway' = 'bus_stop' or tags->'railway' = 'tram_stop' or " \
-                        "tags->'amenity' = 'bus_station' or tags->'amenity' = 'ferry_terminal' or " \
-                        "(tags->'public_transport' = 'stop_position' and tags->'bus' = 'yes') or " \
-                        "(tags->'public_transport' = 'stop_position' and tags->'tram' = 'yes') or " \
-                        "(tags->'public_transport' = 'stop_position' and tags->'ferry' = 'yes')" \
+                        "tags->'amenity' = 'bus_station' or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'bus' = 'yes' or tags->'highway' = 'bus_stop')) or " \
+                        "(tags->'highway' = 'bus_stop' and not tags ? 'public_transport') or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'tram' = 'yes' or tags->'railway' = 'tram_stop')) or " \
+                        "(tags->'railway' = 'tram_stop' and not tags ? 'public_transport') or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'ferry' = 'yes' or tags->'amenity' = 'ferry_terminal')) or " \
+                        "(tags->'amenity' = 'ferry_terminal' and not tags ? 'public_transport') or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'aerialway' = 'yes' or tags->'aerialway' = 'station')) or " \
+                        "(tags->'aerialway' = 'station' and not tags ? 'public_transport')" \
                         ")"
-            if t in ["transport", "transportation_class_2"]:
+
+            if t == "transportation_class_2":
                 tags['station'] += " or (" \
                         "tags->'railway' = 'station' or " \
-                        "tags->'railway' = 'halt' or " \
-                        "tags->'building' LIKE '%station'" \
+                        "tags->'railway' = 'halt'" \
                         ")"
-            if t == "transport":
+
+            if t == "transport_bus_tram":
+                tags['station'] += " or (" \
+                        "tags->'amenity' = 'bus_station' or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'bus' = 'yes' or tags->'highway' = 'bus_stop')) or " \
+                        "(tags->'highway' = 'bus_stop' and not tags ? 'public_transport') or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'tram' = 'yes' or tags->'railway' = 'tram_stop')) or " \
+                        "(tags->'railway' = 'tram_stop' and not tags ? 'public_transport')" \
+                        ")"
+
+            if t == "transport_train_lightrail_subway":
+                tags['station'] += " or (" \
+                        "tags->'railway' = 'station' or " \
+                        "tags->'railway' = 'halt'" \
+                        ")"
+
+            if t == "transport_airport_ferry_aerialway":
                 tags['poi'] += " or (" \
-                        "tags->'amenity' = 'taxi' or " \
-                        "tags->'aerialway' = 'station' or " \
+                        "tags->'aeroway' = 'aerodrome' or " \
                         "tags->'aeroway' = 'terminal'" \
                         ")"
+                tags['station'] += " or (" \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'ferry' = 'yes' or tags->'amenity' = 'ferry_terminal')) or " \
+                        "(tags->'amenity' = 'ferry_terminal' and not tags ? 'public_transport') or " \
+                        "(tags->'public_transport' = 'stop_position' and " \
+                            "(tags->'aerialway' = 'yes' or tags->'aerialway' = 'station')) or " \
+                        "(tags->'aerialway' = 'station' and not tags ? 'public_transport')" \
+                        ")"
+
+            if t == "transport_taxi":
+                tags['poi'] += " or (" \
+                        "tags->'amenity' = 'taxi'" \
+                        ")"
+
             if t == "food":
                 tags['poi'] += " or tags->'amenity' = " \
                         "ANY('{\"cafe\", \"bbq\", \"fast_food\", \"restaurant\", \"bar\", " \
                         "\"pub\", \"drinking_water\", \"biergarten\", \"ice_cream\"}')"
+
+            if t == "entertainment":
+                tags['poi'] += " or (" \
+                        "tags->'amenity' = ANY('{" \
+                            "\"arts_centre\", \"Brothel\", \"Casino\", \"Cinema\", \"community_centre\", " \
+                            "\"fountain\", \"planetarium\", \"social_centre\", \"nightclub\", " \
+                            "\"stripclub\", \"studio\", \"swingerclub\", \"theatre\", \"youth_centre\" " \
+                        "}') or " \
+                        "tags ? 'leisure'" \
+                        ")"
+
             if t == "tourism":
                 tags['poi'] += " or (" \
                         "tags->'amenity' = " \
                             "ANY('{\"crypt\", \"place_of_worship\", \"shelter\"}') or " \
                         "tags->'tourism' != '' or " \
-                        "tags->'natural' = 'water' or " \
                         "tags->'historic' != ''" \
                         ")"
+
+            if t == "nature":
+                tags['poi'] += " or (" \
+                        "tags->'natural' = ANY('{" \
+                            "\"water\", \"glacier\", \"beach\", \"spring\", " \
+                            "\"volcano\", \"peak\", \"cave_entrance\", \"rock\", \"stone\"}')" \
+                        ")"
+
+            if t == "finance":
+                tags['poi'] += " or tags->'amenity' = " \
+                        "ANY('{\"atm\", \"bank\", \"bureau_de_change\"}')"
+
             if t == "shop":
                 tags['poi'] += " or (" \
                         "tags->'amenity' = " \
-                            "ANY('{\"fuel\", \"marketplace\", \"shop\", \"shopping\", " \
-                            "\"Supermarket\", \"post_office\", \"vending_machine\"}') or " \
+                            "ANY('{\"fuel\", \"marketplace\", \"shop\", \"shopping\", \"pharmacy\", " \
+                            "\"Supermarket\", \"post_office\", \"vending_machine\", \"veterinary\"}') or " \
                         "tags->'building' = 'shop' or " \
                         "tags->'craft' != '' or " \
                         "tags->'office' != '' or " \
                         "tags->'shop' != ''" \
                         ")"
+
             if t == "health":
                 tags['poi'] += " or tags->'amenity' = " \
                         "ANY('{\"pharmacy\", \"doctors\", \"dentist\", \"hospital\", \"health_centre\", " \
-                            "\"baby_hatch\", \"clinic\", \"nursing_home\", \"social_facility\", \"veterinary\", " \
+                            "\"baby_hatch\", \"clinic\", \"nursing_home\", \"social_facility\", " \
                             "\"retirement_home\", \"sauna\", \"shower\", \"toilets\"}')"
+
             if t == "education":
                 tags['poi'] += " or tags->'amenity' = " \
                         "ANY('{\"school\", \"college\", \"university\", \"library\", " \
                             "\"kindergarten\", \"Dormitory\", \"auditorium\", \"preschool\"}')" 
-            if t == "finance":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"atm\", \"bank\", \"bureau_de_change\"}')"
-            if t == "entertainment":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"arts_centre\", \"Brothel\", \"Casino\", \"Cinema\", \"community_centre\", " \
-                        "\"fountain\", \"planetarium\", \"social_centre\", " \
-                        "\"nightclub\", \"stripclub\", \"studio\", \"swingerclub\", \"theatre\", " \
-                        "\"youth_centre\"}')"
+
             if t == "public_service":
                 tags['poi'] += " or (" \
                         "tags->'amenity' = " \
                             "ANY('{\"townhall\", \"public_building\", \"embassy\", \"courthouse\", " \
                             "\"police\", \"prison\", \"fire_station\", \"register_office\", " \
-                            "\"shelter\", \"grave_yard\", \"crematorium\", \"village_hall\"}') or " \
-                        "tags->'leisure' != '' or " \
-                        "(tags->'building' != '' and tags->'name' != '')" \
+                            "\"shelter\", \"grave_yard\", \"crematorium\", \"village_hall\"}')" \
                         ")"
+
+            if t == "all_buildings_with_name":
+                tags['poi'] += " or (" \
+                        "(tags ? 'building' and tags ? 'name')" \
+                        ")"
+
+            if t == "surveillance":
+                tags['poi'] += " or (" \
+                        "tags->'man_made' = 'surveillance'" \
+                        ")"
+
+            if t == "bench":
+                tags['poi'] += " or (" \
+                        "tags->'amenity' = 'bench'" \
+                        ")"
+
             if t == "trash":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"recycling\", \"waste_basket\", \"waste_disposal\"}')"
+                tags['poi'] += " or (" \
+                        "tags->'amenity' = ANY('{\"recycling\", \"waste_basket\", \"waste_disposal\"}')" \
+                        ")"
+
+            if t == "bridge":
+                tags['poi'] += " or (" \
+                        "(tags ? 'bridge' AND tags ? 'name')" \
+                        ")"
 
         # clean strings
         if tags['station'].startswith(" or "):
@@ -718,9 +831,9 @@ class POI:
         elif "other_intersection" in tag_list:
             tags['intersection'] = "other"
 
-        # traffic signals
-        if "traffic_signals" in tag_list:
-            tags['traffic_signals'] = "traffic_signals"
+        # pedestrian crossings
+        if "pedestrian_crossings" in tag_list:
+            tags['pedestrian_crossings'] = "pedestrian_crossings"
         return tags
 
     def insert_into_poi_list(self, poi_list, entry, lat, lon):

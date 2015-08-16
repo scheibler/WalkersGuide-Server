@@ -1,10 +1,12 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from db_control import DBControl
-from translator import Translator
-from poi import POI 
 import geometry, time, re
+from py4j.java_gateway import JavaGateway, GatewayClient
+from config import Config
+from db_control import DBControl
+from poi import POI 
+from translator import Translator
 
 class StationFinder:
 
@@ -33,8 +35,6 @@ class StationFinder:
             direction = direction.encode("utf-8")
         new_station = {"lat":lat, "lon":lon, "node_id":-1, "accuracy":False, "type":"station"}
         t1 = time.time()
-        #print line
-        #print direction
         if line.startswith("T") == True or line.startswith("B") == True:
             # transport class 1
             new_station['transportation_class'] = 1
@@ -47,7 +47,6 @@ class StationFinder:
             station_list = []
             while station_list.__len__() == 0:
                 station_list = self.poi.get_poi(lat, lon, radius, ["transportation_class_1"])
-                #print "radius = %d" % radius
                 radius *= 2
             t3 = time.time()
             reference_station_name = station_list[0]['name']
@@ -59,12 +58,18 @@ class StationFinder:
                         continue
                     if l['to'] == None or l['to'] == "":
                         continue
-                    station['accuracy'] = True
+                    # check if the direction value from the osm database is contained by the db direction value
+                    osm_direction_in_db_direction = True
                     for s in l['to'].split(" "):
                         if s.replace(",", "").strip().lower() not in direction.strip().lower():
-                            station['accuracy'] = False
-                            break
-                    if station['accuracy'] == True:
+                            osm_direction_in_db_direction = False
+                    # now check the other way around
+                    db_direction_in_osm_direction = True
+                    for s in direction.split(" "):
+                        if s.replace(",", "").strip().lower() not in l['to'].strip().lower():
+                            db_direction_in_osm_direction = False
+                    if osm_direction_in_db_direction or db_direction_in_osm_direction:
+                        station['accuracy'] = True
                         station['transportation_class'] = 1
                         return station 
 
@@ -96,4 +101,34 @@ class StationFinder:
 
         # if we didn't find the exact station
         return new_station 
+
+    def choose_station_by_vehicle_type(self, station_list, lat, lon, vehicles):
+        gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
+        for station in station_list:
+            distance_to_station = geometry.distance_between_two_points(lat, lon,
+                    geometry.convert_coordinate_to_float(station.lat),
+                    geometry.convert_coordinate_to_float(station.lon))
+            if distance_to_station < 100:
+                departures_result = gateway.entry_point.getDepartures(station.id)
+                for station_departure in departures_result.stationDepartures:
+                    for departure in station_departure.departures:
+                        try:
+                            vcode = departure.line.product.code.encode("utf-8")
+                            if "bus" in vehicles and vcode == "B":
+                                return station
+                            if "tram" in vehicles and vcode == "T":
+                                return station
+                            if "ferry" in vehicles and vcode == "F":
+                                return station
+                            if "monorail" in vehicles and vcode == "S":
+                                return station
+                            if "lightrail" in vehicles and vcode == "S":
+                                return station
+                            if "train" in vehicles and vcode in ["I", "R", "S"]:
+                                return station
+                            if "subway" in vehicles and vcode == "U":
+                                return station
+                        except Exception as e:
+                            pass
+        return station_list[0]
 

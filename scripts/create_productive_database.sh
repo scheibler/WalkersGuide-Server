@@ -194,12 +194,12 @@ fi
 old_directory=$(pwd)
 cd "$temp_folder"
 
-# traffic signals
-filter="highway=traffic_signals or crossing=traffic_signals"
+# pedestrian crossings
+filter="highway=crossing or railway=crossing or crossing="
 "$osmfilter_file" "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
 | "$osmosis_file" --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder"
-mv nodes.txt traffic_signals.txt
+mv nodes.txt pedestrian_crossings.txt
 rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # outer buildings
@@ -229,8 +229,10 @@ rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
 # poi from nodes, ways and relations
 filter="building=apartments =dormitory =hotel =retail =cathedral =chapel =church =civic =hospital =school =university =public or \
 building= and name= or amenity= or shop= or tourism= or leisure= or office= or craft= or natural= or historic= or \
-public_transport=stop_position =station or aeroway=terminal or aerialway=station or \
-highway=bus_stop =crossing =traffic_signals or railway=halt =station =tram_stop =crossing or crossing="
+man_made=beacon =campanile =communications_tower =lighthouse =surveillance =watermill =windmill or bridge= or \
+public_transport=stop_position =station or aeroway=terminal =aerodrom =helipad or aerialway=station or \
+highway=bus_stop =crossing =traffic_signals or railway=halt =station =tram_stop =crossing"
+
 # ways
 "$osmfilter_file" "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations= \
 | "$osmosis_file" --read-xml file=- \

@@ -20,7 +20,7 @@ class Translator:
             if tag == "no_route_options": return "Keine Routenoptionen übermittelt"
             if tag == "no_route_factor_option": return "Der Faktor für die Berechnung des Umweges fehlt"
             if tag == "no_session_id_option": return "Die Session Id fehlt"
-            if tag == "old_request_still_running": return "Eine Anfrage von Ihnen wird bereits bearbeitet"
+            if tag == "old_request_still_running": return "Eine Anfrage von Ihnen wird bereits bearbeitet. Sie können in 3 Minuten fortfahren."
             if tag == "server_busy": return "Der Server ist gerade ausgelastet, Bitte versuchen Sie es später erneut."
             if tag == "no_source_route": return "Keine Route übermittelt"
             if tag == "source_route_incomplete": return "Die übermittelte Routinganfrage ist unvollständig"
@@ -117,6 +117,10 @@ class Translator:
             if tag == "artificial_turf": return "Kunstrasen"
             if tag == "decoturf": return "Kunstrasen"
             if tag == "clay": return "Ascheplatz"
+
+        if category == "aeroway":
+            if tag == "aerodrome": return "Flughafen"
+            if tag == "terminal": return "Flughafenterminal"
 
         if category == "amenity":
             if tag == "animal_boarding": return "Tierheim"
@@ -301,6 +305,7 @@ class Translator:
         if category == "railway":
             if tag == "abandoned": return "aufgelassene Bahnstrecke"
             if tag == "construction": return "Eisenbahn im Bau"
+            if tag == "crossing": return "Bahnübergang"
             if tag == "disused": return "unbenutzte Bahnstrecke"
             if tag == "disused_station": return "unbenutzer Bahnhof"
             if tag == "funicular": return "Seilbahn"
@@ -334,11 +339,17 @@ class Translator:
             if tag == "aerialway": return "Liftstation"
             if tag == "unknown": return "Haltestelle"
 
+        if category == "bridge":
+            if tag == "yes": return "Brücke"
+
         if category == "crossing":
-            if tag == "traffic_signals": return "Ampel"
+            if tag == "traffic_signals": return "Fußgängerampel"
+            if tag == "pelican": return "Fußgängerampel"
+            if tag == "toucan": return "Fußgängerampel"
             if tag == "island": return "Verkehrsinsel"
-            if tag == "uncontrolled": return "Geregelt, keine Ampel"
-            if tag == "unmarked": return "Ungeregelt"
+            if tag == "uncontrolled": return "Zebrastreifen"
+            if tag == "zebra": return "Zebrastreifen"
+            if tag == "unmarked": return "Ungeregelte Straßenquerung"
             if tag == "unknown": return "Unbekannt"
 
         if category == "historic":
@@ -360,6 +371,7 @@ class Translator:
             if tag == "wayside_cross": return "Wegkreuz"
             if tag == "wayside_shrine": return "Schrein"
             if tag == "wreck": return "Schiffswrack"
+            if tag == "yes": return "Historischer Ort"
 
         if category == "landuse":
             if tag == "allotments": return "Kleingartenanlage"
@@ -417,6 +429,9 @@ class Translator:
             if tag == "swimming_pool": return "Schwimmbecken"
             if tag == "track": return "Rennstrecke"
             if tag == "water_park": return "Wasserpark"
+
+        if category == "man_made":
+            if tag == "surveillance": return "Überwachungskamera"
 
         if category == "natural":
             if tag == "bay": return "Bucht"
@@ -603,7 +618,7 @@ class Translator:
             if tag == "no_route_options": return "No route options transmitted"
             if tag == "no_route_factor_option": return "The factor for the route indirection calculation is missing"
             if tag == "no_session_id_option": return "Missing session id"
-            if tag == "old_request_still_running": return "The server still calculates your prior request."
+            if tag == "old_request_still_running": return "The server still calculates your prior request. Please wait at least 3 minutes."
             if tag == "server_busy": return "Currently the server is busy. Please try again later."
             if tag == "no_source_route": return "No route transmitted"
             if tag == "source_route_incomplete": return "The transmitted route query is incomplete"
@@ -699,6 +714,10 @@ class Translator:
             if tag == "artificial_turf": return "artificial turf"
             if tag == "decoturf": return "artificial turf"
             if tag == "clay": return "tennis or soccer pitch surface"
+
+        if category == "aeroway":
+            if tag == "aerodrome": return "Airport"
+            if tag == "terminal": return "Airport terminal"
 
         if category == "amenity":
             if tag == "animal_boarding": return "Animal boarding facility"
@@ -884,6 +903,7 @@ class Translator:
         if category == "railway":
             if tag == "abandoned": return "Abandoned Railway"
             if tag == "construction": return "Railway under Construction"
+            if tag == "crossing": return "Pedestrian level crossing"
             if tag == "disused": return "Disused Railway"
             if tag == "disused_station": return "Disused Railway Station"
             if tag == "funicular": return "Funicular Railway"
@@ -914,14 +934,20 @@ class Translator:
             if tag == "light_rail": return "Lightrail Station"
             if tag == "subway": return "Subway Station"
             if tag == "ferry": return "Ferry Station"
-            if tag == "aerialway": return "Lift Station"
+            if tag == "aerialway": return "Aerial cableway station"
             if tag == "unknown": return "Station"
 
+        if category == "bridge":
+            if tag == "yes": return "Bridge"
+
         if category == "crossing":
-            if tag == "traffic_signals": return "Traffic Signals"
-            if tag == "island": return "Island"
-            if tag == "uncontrolled": return "Marked, no Traffic Signals"
-            if tag == "unmarked": return "Unmarked"
+            if tag == "traffic_signals": return "Traffic signals"
+            if tag == "pelican": return "Traffic signals"
+            if tag == "toucan": return "Traffic signals"
+            if tag == "island": return "Traffic island"
+            if tag == "uncontrolled": return "Zebra crossing"
+            if tag == "zebra": return "Zebra crossing"
+            if tag == "unmarked": return "Unmarked crossing"
             if tag == "unknown": return "Unknown"
 
         if category == "historic":
@@ -943,6 +969,7 @@ class Translator:
             if tag == "wayside_cross": return "Wayside Cross"
             if tag == "wayside_shrine": return "Wayside Shrine"
             if tag == "wreck": return "Wreck"
+            if tag == "yes": return "Historic place"
 
         if category == "landuse":
             if tag == "allotments": return "Allotment"
@@ -1001,6 +1028,9 @@ class Translator:
             if tag == "track": return "Running Track"
             if tag == "water_park": return "Water Park"
             if tag == "slipway": return "Boat Ramp"
+
+        if category == "man_made":
+            if tag == "surveillance": return "Surveillance camera"
 
         if category == "natural":
             if tag == "bay": return "Bay"

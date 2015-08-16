@@ -43,7 +43,7 @@ class RouteTransportCreator:
                     geometry.convert_coordinate_to_int(start_point['lon']) ))
         for station in self.main_point.getNearestStations(
                 geometry.convert_coordinate_to_int(start_point['lat']),
-                geometry.convert_coordinate_to_int(start_point['lon'])).stations:
+                geometry.convert_coordinate_to_int(start_point['lon'])).locations:
             start_stations.append(station)
             if start_stations.__len__() >= 4:
                 break
@@ -54,7 +54,7 @@ class RouteTransportCreator:
                     geometry.convert_coordinate_to_int(dest_point['lon']) ))
         for station in self.main_point.getNearestStations(
                 geometry.convert_coordinate_to_int(dest_point['lat']),
-                geometry.convert_coordinate_to_int(dest_point['lon'])).stations:
+                geometry.convert_coordinate_to_int(dest_point['lon'])).locations:
             dest_stations.append(station)
             if dest_stations.__len__() >= 4:
                 break
@@ -154,23 +154,17 @@ class RouteTransportCreator:
         cost = 0
         route = []
         walking_distance = 0
-        start = time.time()
 
         # add the start point
         start_index = 0
         placeholder_segment = {"name":"", "type":"footway", "sub_type":"", "distance":0, "bearing":0}
         if "$Individual" in legs[0].getClass().getName():
-            route.append(start_point)
             placeholder_segment['distance'] = geometry.distance_between_two_points( start_point['lat'], start_point['lon'],
                     geometry.convert_coordinate_to_float(legs[0].arrival.lat),
                     geometry.convert_coordinate_to_float(legs[0].arrival.lon) )
-            walking_distance += placeholder_segment['distance']
             placeholder_segment['bearing'] = geometry.bearing_between_two_points( start_point['lat'], start_point['lon'],
                     geometry.convert_coordinate_to_float(legs[0].arrival.lat),
                     geometry.convert_coordinate_to_float(legs[0].arrival.lon) )
-            placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
-            placeholder_segment['sub_type'] = "footway_place_holder"
-            route.append(placeholder_segment)
             start_index += 1
         else:
             placeholder_segment['distance'] = geometry.distance_between_two_points( start_point['lat'], start_point['lon'],
@@ -179,12 +173,12 @@ class RouteTransportCreator:
             placeholder_segment['bearing'] = geometry.bearing_between_two_points( start_point['lat'], start_point['lon'],
                     geometry.convert_coordinate_to_float(legs[0].departure.lat),
                     geometry.convert_coordinate_to_float(legs[0].departure.lon) )
-            if placeholder_segment['distance'] > 20:
-                walking_distance += placeholder_segment['distance']
-                placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
-                placeholder_segment['sub_type'] = "footway_place_holder"
-                route.append(start_point)
-                route.append(placeholder_segment)
+        if placeholder_segment['distance'] > 50:
+            walking_distance += placeholder_segment['distance']
+            placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
+            placeholder_segment['sub_type'] = "footway_place_holder"
+            route.append(start_point)
+            route.append(placeholder_segment)
 
         # check, if the last part of the trip is a walking part
         dest_index = legs.__len__()
@@ -196,21 +190,17 @@ class RouteTransportCreator:
             leg = legs[index]
             if "$Public" in leg.getClass().getName():
                 # create departure and arrival objects
-                line = leg.line.label.encode("utf-8")
+                line = "%s%s" % (leg.line.product.code.encode("utf-8"), leg.line.label.encode("utf-8"))
                 if leg.destination != None:
                     destination_name = leg.destination.name.encode("utf-8")
                 else:
                     destination_name = leg.arrival.name.encode("utf-8")
-                t1 = time.time()
                 departure = self.s_finder.get_station( leg.departure, line, destination_name)
                 if leg.departureStop.plannedDeparturePosition != None:
                     departure['platform_number'] = leg.departureStop.plannedDeparturePosition.name
-                t2 = time.time()
                 arrival = self.s_finder.get_station( leg.arrival, line, destination_name)
                 if leg.arrivalStop.plannedArrivalPosition != None:
                     arrival['platform_number'] = leg.arrivalStop.plannedArrivalPosition.name.encode("utf-8")
-                t3 = time.time()
-                #print "departure and arrival time: %.2f" % (t3-t1)
                 self.route_logger.append_to_log("line: %s; From %s to %s" % (line, departure['name'], arrival['name']))
 
                 # create transport segment
@@ -482,15 +472,10 @@ class RouteTransportCreator:
                     geometry.convert_coordinate_to_float(legs[-1].departure.lat),
                     geometry.convert_coordinate_to_float(legs[-1].departure.lon),
                     dest_point['lat'], dest_point['lon'] )
-            walking_distance += placeholder_segment['distance']
             placeholder_segment['bearing'] = geometry.bearing_between_two_points(
                     geometry.convert_coordinate_to_float(legs[-1].departure.lat),
                     geometry.convert_coordinate_to_float(legs[-1].departure.lon),
                     dest_point['lat'], dest_point['lon'] )
-            placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
-            placeholder_segment['sub_type'] = "footway_place_holder"
-            route.append(placeholder_segment)
-            route.append(dest_point)
         else:
             placeholder_segment['distance'] = geometry.distance_between_two_points(
                     geometry.convert_coordinate_to_float(legs[-1].arrival.lat),
@@ -500,14 +485,15 @@ class RouteTransportCreator:
                     geometry.convert_coordinate_to_float(legs[-1].arrival.lat),
                     geometry.convert_coordinate_to_float(legs[-1].arrival.lon),
                     dest_point['lat'], dest_point['lon'] )
-            if placeholder_segment['distance'] > 20:
-                walking_distance += placeholder_segment['distance']
-                placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
-                placeholder_segment['sub_type'] = "footway_place_holder"
-                route.append(placeholder_segment)
-                route.append(dest_point)
+        if placeholder_segment['distance'] > 50:
+            walking_distance += placeholder_segment['distance']
+            placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
+            placeholder_segment['sub_type'] = "footway_place_holder"
+            route.append(placeholder_segment)
+            route.append(dest_point)
 
-        end = time.time()
+
+        # add walking distance to cost value
         cost += (walking_distance / self.costs['walk_dist_meters']) + 1
         self.route_logger.append_to_log("Fußweg insgesamt = %d, %d Punkte" % (walking_distance, (walking_distance/self.costs['walk_dist_meters'])+1))
 
