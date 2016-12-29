@@ -13,6 +13,7 @@ db_password = password
 [webserver_settings]
 host = 127.0.0.1
 port = 23456
+map_name = Europe
 thread_pool = 10
 
 [javagateway_settings]

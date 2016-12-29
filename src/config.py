@@ -28,6 +28,7 @@ class Config:
             self.config.DEFAULT_WEBSERVER_SETTINGS = {
                     'host' : 'example.org',
                     'port' : '23456',
+                    'map_name' : 'example',
                     'thread_pool' : '10' }
             self.config.DEFAULT_JAVAGATEWAY_SETTINGS = {
                     'gateway_port' : '25333' }

@@ -24,7 +24,7 @@ class RouteFootwayCreator:
                 % re.sub(r'[^a-zA-Z0-9]', '', self.session_id)
         self.intersections_table_name = Config().get_param("intersection_table")
         self.poi = POI(session_id, translator_object)
-        self.minimum_radius = 600
+        self.minimum_radius = 750
         self.blocked_ways = blocked_ways
 
         # table column name for given indirection factor
@@ -702,7 +702,6 @@ class RouteFootwayCreator:
                                 ST_SetSRID(ST_MakeLine(ST_MakePoint(%f, %f), ST_MakePoint(%f, %f)), 4326)) = 't'" \
                         % (self.temp_routing_table_name, nearest_railway['osm_id'],
                             lon, lat, nearest_lon, nearest_lat))[0]
-                print "jup     %f   %f" % (nearest_lon, nearest_lat)
                 nearest_lines.insert(0, nearest_railway)
             except IndexError as e:
                 pass

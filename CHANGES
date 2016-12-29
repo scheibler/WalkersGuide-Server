@@ -63,3 +63,9 @@ v0.5.0, 16.08.2015:
     misc:
         - timeout for nginx config
 
+v0.5.1, 29.12.2016:
+    src:
+        - Added map name attribute
+    sql_functions:
+        - Fixed recreate_vertex_of_routing_table function
+
