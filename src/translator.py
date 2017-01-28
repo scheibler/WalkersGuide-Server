@@ -299,8 +299,9 @@ class Translator:
             if tag == "trunk_link": return "Fernstraßenauffahrt"
             if tag == "unclassified": return "Landstraße"
             if tag == "unsurfaced": return "nichtasphaltierte Straße"
-            if tag == "traffic_signals": return "Ampel"
-            if tag == "pedestrian_traffic_signals": return "Fußgängerampel"
+            if tag == "crossing": return "Kreuzung"
+            if tag == "roundabout": return "Kreisverkehr"
+            if tag == "traffic_signals": return "Ampelkreuzung"
 
         if category == "railway":
             if tag == "abandoned": return "aufgelassene Bahnstrecke"
@@ -350,7 +351,7 @@ class Translator:
             if tag == "uncontrolled": return "Zebrastreifen"
             if tag == "zebra": return "Zebrastreifen"
             if tag == "unmarked": return "Ungeregelte Straßenquerung"
-            if tag == "unknown": return "Unbekannt"
+            if tag == "unknown": return "Straßenquerung"
 
         if category == "historic":
             if tag == "archaeological_site": return "Ausgrabungsstätte"
@@ -897,8 +898,9 @@ class Translator:
             if tag == "trunk_link": return "Trunk Road"
             if tag == "unclassified": return "Unclassified Road"
             if tag == "unsurfaced": return "Unsurfaced Road"
-            if tag == "traffic_signals": return "Traffic Signals"
-            if tag == "pedestrian_traffic_signals": return "Pedestrian Traffic Signals"
+            if tag == "crossing": return "Intersection"
+            if tag == "roundabout": return "Roundabout"
+            if tag == "traffic_signals": return "Intersection with traffic signals"
 
         if category == "railway":
             if tag == "abandoned": return "Abandoned Railway"
@@ -948,7 +950,7 @@ class Translator:
             if tag == "uncontrolled": return "Zebra crossing"
             if tag == "zebra": return "Zebra crossing"
             if tag == "unmarked": return "Unmarked crossing"
-            if tag == "unknown": return "Unknown"
+            if tag == "unknown": return "Pedestrian crossing"
 
         if category == "historic":
             if tag == "archaeological_site": return "Archaeological Site"

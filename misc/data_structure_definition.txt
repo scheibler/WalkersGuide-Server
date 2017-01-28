@@ -1,0 +1,122 @@
+Data structure definition for points and routes
+===============================================
+
+
+General
+-------
+
+*: attribute is mandatory
++: attribute is optional
+
+
+Points
+------
+
+Point:
+* type:             "point"
+* sub_type:         String
+* name:             String
+* lat:              Double
+* lon:              Double
++ node_id:          Long            node id from osm database
+                    [node_id >= 0, default: unknown = -1]
++ tactile_paving:   Integer         tactile markings for white cane users
+                    [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
++ wheelchair:       Integer         wheelchair accessibility
+                    [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
++ turn:             Integer         turn in degree (only for routes)
+                    [0 <= turn <= 359, default: unknown = -1]
+
+intersection:                   extends from point
+* type:                         "intersection"
+* way_list:                     list<footway>               list of intersection ways
++ pedestrian_crossing_list:     list<pedestrian_crossing>   list of pedestrian crossings
++ number_of_streets:            Integer                     number of all streets
+                                [number_of_streets >= 0, default: unknown = -1]
++ number_of_streets_with_name:  Integer                     number of big streets
+                                [number_of_streets_with_name >= 0, default: unknown = -1]
+
+entrance:                       extends from point
+* type:                         "entrance"
++ label:                        String          entrance type (main, emergency, ect.)
+
+pedestrian_crossing:            extends from point
+* type:                         "pedestrian_crossing"
++ traffic_signals_sound:        Integer         acustic signal for traffic signals
+                                [0 = no, 1 = yes, default: unknown = -1]
++ traffic_signals_vibration:    Integer         tactile signal for traffic signals
+                                [0 = no, 1 = yes, default: unknown = -1]
+
+Poi:                            extends from point
+* type:                         "poi"
++ entrance_list:                list<entrance>  list of entrances into this poi
++ is_inside:                    poi             poi is inside another building
++ address:                      String
++ email:                        String
++ phone:                        String
++ opening_hours:                String
++ website:                      String
+
+station:                        extends from point
+* type:                         "station"
++ lines:                        list<line>      list of lines for this station
++ vehicles:                     list<string>    list of vehicles for this station
++ station_id                    Long            station id from deutsche bahn api
+                                [station_id >= 0, default: unknown = -1]
++ exact_position:               Boolean         only for routes
++ platform_number:              String          only for routes
+
+Departure:
+* nr:           String      line number
+* to:           String      direction
+* time:         String      absolute departure time
+* remaining:    Integer     remaining time until departure in minutes
+
+line:
+* nr:       String      line number
++ to:       String      direction
+
+
+Way segments
+------------
+
+footway:
+* type:             "footway"
+* sub_type:         String
+* name:             String
++ lanes:            Integer         number of street lanes
+                    [lanes >= 0, default: unknown = -1]
++ pois:             List<Point>     List of points (e. x. intersections along the way)
++ segregated:       Integer         shared ways like footway/cycleway use different lanes
+                    [0 = no, 1 = yes, default: -1 = unknown]
++ sidewalk:         Integer         street contains sidewalk
+                    [0 = no, 1 = left, 2 = right, 3 = both, default: -1 = unknown]
++ surface:          String
++ tactile_paving:   Integer         tactile markings for white cane users
+                    [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
++ tram:             Integer         tran railway on street
+                    [0 = no, 1 = yes, default: -1 = unknown]
++ way_id            Long            way id from osm database
+                    [way_id >= 0, default: unknown = -1]
++ wheelchair:       Integer         wheelchair accessibility
+                    [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
++ width:            Double          way width of way
+                    [width >= 0.0, default: unknown = -1.0]
++ distance:         Integer         Length of way segment (only for routes and intersections)
+                    [distance >= 0, default: unknown = -1]
++ bearing:          Integer         Length of way segment (only for routes and intersections)
+                    [0 <= bearing <= 359, default: unknown = -1]
+
+transport:
+* type:                             "transport"
+* sub_type:                         String
+* name:                             String
+* line:                             String
+* direction:                        String
+* departure_time:                   String
+* departure_time_millis:            Long
+* arrival_time:                     String
+* arrival_time_millis:              Long
+* duration:                         String
++ stops:                            list<String>
+

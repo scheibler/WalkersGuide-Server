@@ -14,14 +14,14 @@ class POI:
         self.translator = translator_object
         self.hide_log_messages = hide_log_messages
 
-    def get_poi(self, lat, lon, radius, tag_list, search=""):
+    def get_poi(self, lat, lon, radius, number_of_results, tag_list, search=""):
         ts = time.time()
         poi_list = []
 
         # tags, boundary box and search strings
         tags = self.create_tags(tag_list)
         if search != "":
-            # if we search for something, choose a 50 km radius
+            # if we search for something, choose a 10 km radius
             boundaries = geometry.get_boundary_box(lat, lon, 10000)
             # prepare search strings
             search = search.replace(" ", "%").lower()
@@ -56,10 +56,16 @@ class POI:
                 where_clause += " AND %s" % search_other
             # query data
             result = DBControl().fetch_data("" \
+                    "WITH closest_points AS (" \
+                        "SELECT * FROM %s WHERE %s" \
+                    ")" \
                     "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets, " \
                             "number_of_streets_with_name, number_of_traffic_signals " \
-                        "FROM %s WHERE %s;"
-                    % (Config().get_param("intersection_table"), where_clause))
+                        "FROM closest_points " \
+                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
+                        "LIMIT %d" \
+                    % (Config().get_param("intersection_table"), where_clause,
+                        lon, lat, number_of_results))
             t2 = time.time()
             for row in result:
                 intersection_id = int(row['id'])
@@ -67,9 +73,6 @@ class POI:
                 intersection = self.create_intersection(intersection_id, row['lat'], row['lon'], row['name'], intersection_tags, row['number_of_streets'],
                         row['number_of_streets_with_name'], row['number_of_traffic_signals'])
                 poi_list = self.insert_into_poi_list(poi_list, intersection, lat, lon)
-                # prevent accidental queries with more than 500 results
-                if poi_list.__len__() > 500:
-                    break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     Config().confirm_removement_of_session_id(self.session_id)
@@ -87,9 +90,15 @@ class POI:
             if search_poi != "":
                 where_clause += " AND %s" % search_poi
             result = DBControl().fetch_data("" \
+                    "WITH closest_points AS (" \
+                        "SELECT * FROM stations WHERE %s" \
+                    ")" \
                     "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
                             "outer_building_id, number_of_entrances, number_of_lines " \
-                        "FROM stations WHERE %s;" % where_clause)
+                        "FROM closest_points " \
+                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
+                        "LIMIT %d" \
+                    % (where_clause, lon, lat, number_of_results))
             t2 = time.time()
             for row in result:
                 station_id = int(row['id'])
@@ -112,9 +121,6 @@ class POI:
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
                 poi_list = self.insert_into_poi_list(poi_list, station, lat, lon)
-                # prevent accidental queries with more than 500 results
-                if poi_list.__len__() > 500:
-                    break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     Config().confirm_removement_of_session_id(self.session_id)
@@ -132,9 +138,15 @@ class POI:
             if search_poi != "":
                 where_clause += " AND %s" % search_poi
             result = DBControl().fetch_data("" \
+                    "WITH closest_points AS (" \
+                        "SELECT * FROM poi WHERE %s" \
+                    ")" \
                     "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
                             "outer_building_id, number_of_entrances " \
-                        "FROM poi WHERE %s;" % where_clause)
+                        "FROM closest_points " \
+                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
+                        "LIMIT %d" \
+                    % (where_clause, lon, lat, number_of_results))
             t2 = time.time()
             for row in result:
                 poi_id = int(row['id'])
@@ -143,9 +155,6 @@ class POI:
                 outer_building_id = int(row['outer_building_id'])
                 poi = self.create_poi(poi_id, osm_id, row['lat'], row['lon'], poi_tags, outer_building_id, row['number_of_entrances'])
                 poi_list = self.insert_into_poi_list(poi_list, poi, lat, lon)
-                # prevent accidental queries with more than 500 results
-                if poi_list.__len__() > 500:
-                    break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     Config().confirm_removement_of_session_id(self.session_id)
@@ -153,6 +162,35 @@ class POI:
             t3 = time.time()
             if self.hide_log_messages == False:
                 print "poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+
+        # entrances
+        if tags['entrance'] != "":
+            t1 = time.time()
+            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
+                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
+            if search_poi != "":
+                where_clause += " AND %s" % search_other
+            result = DBControl().fetch_data("" \
+                    "WITH closest_points AS (" \
+                        "SELECT * FROM entrances WHERE %s" \
+                    ")" \
+                    "SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags " \
+                        "FROM closest_points " \
+                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
+                        "LIMIT %d" \
+                    % (where_clause, lon, lat, number_of_results))
+            t2 = time.time()
+            for row in result:
+                entrance = self.create_entrance(int(row['entrance_id']), row['lat'], row['lon'],
+                        self.parse_hstore_column(row['tags']), row['label'])
+                poi_list = self.insert_into_poi_list(poi_list, entrance, lat, lon)
+                # check for cancel command
+                if Config().has_session_id_to_remove(self.session_id):
+                    Config().confirm_removement_of_session_id(self.session_id)
+                    return
+            t3 = time.time()
+            if self.hide_log_messages == False:
+                print "entrances gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         # pedestrian crossings
         if tags['pedestrian_crossings'] != "":
@@ -162,18 +200,19 @@ class POI:
             if search_poi != "":
                 where_clause += " AND %s" % search_pedestrian_crossings
             result = DBControl().fetch_data("" \
+                    "WITH closest_points AS (" \
+                        "SELECT * FROM pedestrian_crossings WHERE %s" \
+                    ")" \
                     "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name " \
-                        "FROM pedestrian_crossings WHERE %s;" % where_clause)
+                        "FROM closest_points " \
+                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
+                        "LIMIT %d" \
+                    % (where_clause, lon, lat, number_of_results))
             t2 = time.time()
             for row in result:
-                signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
-                        self.parse_hstore_column(row['tags']), 0, 0)
-                if row['crossing_street_name'] != None:
-                    signal['name'] += ": %s" % row['crossing_street_name']
+                signal = self.create_pedestrian_crossing(int(row['id']), row['lat'], row['lon'],
+                        self.parse_hstore_column(row['tags']), row['crossing_street_name'])
                 poi_list = self.insert_into_poi_list(poi_list, signal, lat, lon)
-                # prevent accidental queries with more than 500 results
-                if poi_list.__len__() > 500:
-                    break
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     Config().confirm_removement_of_session_id(self.session_id)
@@ -182,10 +221,16 @@ class POI:
             if self.hide_log_messages == False:
                 print "pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
+        # filter out entries above given radius
+        filtered_poi_list = []
+        for entry in poi_list:
+            if entry['distance'] < radius and len(filtered_poi_list) < number_of_results:
+                filtered_poi_list.append(entry)
+
         te = time.time()
         if self.hide_log_messages == False:
             print "gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), poi_list.__len__())
-        return poi_list
+        return filtered_poi_list
 
     #####
     # create the poi objects
@@ -204,31 +249,36 @@ class POI:
         return self.create_way_point(osm_node_id, lat, lon, tags)
 
     def create_way_point(self, osm_node_id, lat, lon, tags):
-        way_point = {}
-        if type(lat) is not float or type(lon) is not float or type(tags) is not dict:
-            return way_point
-        way_point['lat'] = lat
-        way_point['lon'] = lon
-        way_point['node_id'] = osm_node_id
-        way_point['type'] = "way_point"
-        way_point['sub_type'] = self.translator.translate("poi", "way_point")
+        point = {}
+        if type(lat) is not float \
+                or type(lon) is not float \
+                or type(tags) is not dict:
+            return point
+        point['type'] = "point"
+        point['sub_type'] = self.translator.translate("poi", "way_point")
         if tags.has_key("name"):
-            way_point['name'] = tags['name']
+            point['name'] = tags['name']
         else:
-            way_point['name'] = way_point['sub_type']
+            point['name'] = point['sub_type']
+        point['lat'] = lat
+        point['lon'] = lon
+        # optional attributes
+        point['node_id'] = osm_node_id
         if tags.has_key("tactile_paving"):
-            if tags['tactile_paving'] == "yes":
-                way_point['tactile_paving'] = 1
             if tags['tactile_paving'] == "no":
-                way_point['tactile_paving'] = 0
+                point['tactile_paving'] = 0
+            elif tags['tactile_paving'] in ["contrasted", "primitive", "yes"]:
+                point['tactile_paving'] = 1
+            elif tags['tactile_paving'] == "incorrect":
+                point['tactile_paving'] = 2
         if tags.has_key("wheelchair"):
             if tags['wheelchair'] == "no":
-                way_point['wheelchair'] = 0
-            if tags['wheelchair'] == "limited":
-                way_point['wheelchair'] = 1
-            if tags['wheelchair'] == "yes":
-                way_point['wheelchair'] = 2
-        return way_point
+                point['wheelchair'] = 0
+            elif tags['wheelchair'] == "limited":
+                point['wheelchair'] = 1
+            elif tags['wheelchair'] == "yes":
+                point['wheelchair'] = 2
+        return point
 
     def create_way_segment_by_id(self, osm_way_id, walking_reverse=False):
         try:
@@ -242,60 +292,79 @@ class POI:
 
     def create_way_segment(self, osm_way_id, tags, walking_reverse=False):
         segment = {}
-        if type(tags) is not dict or type(walking_reverse) is not bool:
+        if type(tags) is not dict \
+                or type(walking_reverse) is not bool:
             return segment
-        segment['pois'] = []
-        segment['way_id'] = osm_way_id
+        # type and subtype
         segment['type'] = "footway"
-        segment['sub_type'] = ""
         if tags.has_key("highway"):
             segment['sub_type'] = self.translator.translate("highway", tags['highway'])
             if tags.has_key("railway") and tags['railway'] == "tram":
                 segment['tram'] = 1
+            else:
+                segment['tram'] = 0
         elif tags.has_key("railway"):
             segment['sub_type'] = self.translator.translate("railway", tags['railway'])
-        if tags.has_key("surface"):
-            segment['surface'] = self.translator.translate("surface", tags['surface'])
+        else:
+            segment['sub_type'] = "unknown"
+        # name
+        if tags.has_key("name"):
+            segment['name'] = tags['name']
+        elif tags.has_key("surface"):
+            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['surface'])
+        elif tags.has_key("tracktype"):
+            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['tracktype'])
+        else:
+            segment['name'] = segment['sub_type']
+        # optional attributes
         if tags.has_key("lanes"):
-            segment['lanes'] = tags['lanes']
-        if tags.has_key("width"):
-            segment['width'] = tags['width']
+            try:
+                segment['lanes'] = int(tags['lanes'])
+            except ValueError as e:
+                pass
+        segment['pois'] = []
         if tags.has_key("segregated"):
             if tags['segregated'] == "yes":
                 segment['segregated'] = 1
             else:
                 segment['segregated'] = 0
-        if tags.has_key("tracktype"):
-            segment['tracktype'] = tags['tracktype']
         if tags.has_key("sidewalk"):
             if tags['sidewalk'] == "no" or tags['sidewalk'] == "none":
                 segment['sidewalk'] = 0
-            if tags['sidewalk'] == "left":
+            elif tags['sidewalk'] == "left":
                 if walking_reverse == False:
                     segment['sidewalk'] = 1
                 else:
                     segment['sidewalk'] = 2
-            if tags['sidewalk'] == "right":
+            elif tags['sidewalk'] == "right":
                 if walking_reverse == False:
                     segment['sidewalk'] = 2
                 else:
                     segment['sidewalk'] = 1
-            if tags['sidewalk'] == "both":
+            elif tags['sidewalk'] == "both":
                 segment['sidewalk'] = 3
+        if tags.has_key("surface"):
+            segment['surface'] = self.translator.translate("surface", tags['surface'])
         if tags.has_key("tactile_paving"):
-            if tags['tactile_paving'] == "yes":
-                segment['tactile_paving'] = 1
             if tags['tactile_paving'] == "no":
                 segment['tactile_paving'] = 0
-        if tags.has_key("name"):
-            segment['name'] = tags['name']
-        else:
-            if segment.has_key("surface"):
-                segment['name'] = "%s (%s)" % (segment['sub_type'], segment['surface'])
-            elif segment.has_key("tracktype"):
-                segment['name'] = "%s (%s)" % (segment['sub_type'], segment['tracktype'])
-            else:
-                segment['name'] = segment['sub_type']
+            elif tags['tactile_paving'] in ["contrasted", "primitive", "yes"]:
+                segment['tactile_paving'] = 1
+            elif tags['tactile_paving'] == "incorrect":
+                segment['tactile_paving'] = 2
+        segment['way_id'] = osm_way_id
+        if tags.has_key("wheelchair"):
+            if tags['wheelchair'] == "no":
+                segment['wheelchair'] = 0
+            elif tags['wheelchair'] == "limited":
+                segment['wheelchair'] = 1
+            elif tags['wheelchair'] == "yes":
+                segment['wheelchair'] = 2
+        if tags.has_key("width"):
+            try:
+                segment['width'] = float(tags['width'])
+            except ValueError as e:
+                pass
         return segment
 
     def create_intersection_by_id(self, osm_id):
@@ -320,115 +389,156 @@ class POI:
         intersection_table = Config().get_param("intersection_table")
         intersection_table_data = Config().get_param("intersection_data_table")
         intersection = {}
-        if type(osm_id) is not int or type(lat) is not float or type(lon) is not float or type(name) is not str or type(tags) is not dict or type(number_of_streets) is not int or type(number_of_streets_with_name) is not int or type(number_of_traffic_signals) is not int:
+        if type(osm_id) is not int \
+                or type(lat) is not float \
+                or type(lon) is not float \
+                or type(name) is not str \
+                or type(tags) is not dict \
+                or type(number_of_streets) is not int \
+                or type(number_of_streets_with_name) is not int \
+                or type(number_of_traffic_signals) is not int:
             return intersection
         intersection = self.create_way_point(osm_id, lat, lon, tags)
         if intersection == {}:
             return intersection
 
-        # traffic lights
-        intersection['pedestrian_crossing_list'] = []
-        if number_of_traffic_signals > 0:
-            result = DBControl().fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
-                    from pedestrian_crossings where intersection_id = %d" % osm_id)
-            for row in result:
-                signal = self.create_poi(0, int(row['id']), row['lat'], row['lon'],
-                        self.parse_hstore_column(row['tags']), 0, 0)
-                if row['crossing_street_name'] != None:
-                    signal['name'] += ": %s" % row['crossing_street_name']
-                intersection['pedestrian_crossing_list'].append(signal)
-
-        # intersection specific properties
-        intersection['name'] = ""
-        for street in name.split(","):
-            translated_street = self.translator.translate("highway", street.strip())
-            if translated_street == street.strip():
-                translated_street = self.translator.translate("railway", street.strip())
-            intersection['name'] += "%s, " % translated_street
-        intersection['name'] = intersection['name'].strip(",")
-        intersection['number_of_streets_with_name'] = number_of_streets_with_name
+        # type and subtype
         intersection['type'] = "intersection"
-        intersection['sub_type'] = self.translator.translate("crossing", "unknown")
-        if tags.has_key("crossing"):
-            intersection['sub_type'] = self.translator.translate("crossing", tags['crossing'])
-        elif tags.has_key("highway") and tags['highway'] == "crossing" \
-                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
-            intersection['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
+        if tags.has_key("highway") and tags['highway'] == "mini_roundabout":
+            intersection['sub_type'] = self.translator.translate("highway", "roundabout")
         elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
             intersection['sub_type'] = self.translator.translate("highway", "traffic_signals")
         elif tags.has_key("railway") and tags['railway'] == "crossing":
             intersection['sub_type'] = self.translator.translate("railway", "crossing")
-        elif intersection['pedestrian_crossing_list'].__len__() > 0:
-            intersection['sub_type'] = self.translator.translate("crossing", "traffic_signals")
+        else:
+            intersection['sub_type'] = self.translator.translate("highway", "crossing")
 
-        # streets
-        intersection['sub_points'] = []
+        # translate name
+        translated_street_name_list = []
+        for street in [x.strip() for x in name.split(", ")]:
+            if street != self.translator.translate("highway", street):
+                translated_street_name_list.append(self.translator.translate("highway", street))
+            elif street != self.translator.translate("railway", street):
+                translated_street_name_list.append(self.translator.translate("railway", street))
+            else:
+                translated_street_name_list.append(street)
+        intersection['name'] = ', '.join(translated_street_name_list)
+
+        # optional attributes
+        intersection['number_of_streets'] = number_of_streets
+        intersection['number_of_streets_with_name'] = number_of_streets_with_name
+
+        # ways
+        intersection['way_list'] = []
         result = DBControl().fetch_data("\
                 SELECT way_id, node_id, direction, way_tags, node_tags, \
                     ST_X(geom) as lon, ST_Y(geom) as lat \
                 from %s where id = %d" % (intersection_table_data, osm_id))
         for street in result:
-            sub_point = self.create_way_point(street['node_id'], street['lat'], street['lon'],
-                    self.parse_hstore_column(street['node_tags']))
-            if street['direction'] == "B":
-                way_segment = self.create_way_segment(street['way_id'],
-                        self.parse_hstore_column(street['way_tags']), True)
-            else:
-                way_segment = self.create_way_segment(street['way_id'],
-                        self.parse_hstore_column(street['way_tags']), False)
-            for key in way_segment:
-                sub_point[key] = way_segment[key]
-            sub_point['intersection_bearing'] = geometry.bearing_between_two_points(
-                    intersection['lat'], intersection['lon'], sub_point['lat'], sub_point['lon'])
-            intersection['sub_points'].append(sub_point)
+            sub_segment = self.create_way_segment(
+                    street['way_id'],
+                    self.parse_hstore_column(street['way_tags']),
+                    street['direction'] == "B")
+            sub_segment['bearing'] = geometry.bearing_between_two_points(
+                    intersection['lat'], intersection['lon'], street['lat'], street['lon'])
+            sub_segment['distance'] = geometry.distance_between_two_points(
+                    intersection['lat'], intersection['lon'], street['lat'], street['lon'])
+            intersection['way_list'].append(sub_segment)
+
+        # crossings
+        intersection['pedestrian_crossing_list'] = []
+        if number_of_traffic_signals > 0:
+            result = DBControl().fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
+                    from pedestrian_crossings where intersection_id = %d" % osm_id)
+            for row in result:
+                signal = self.create_pedestrian_crossing(int(row['id']), row['lat'], row['lon'],
+                        self.parse_hstore_column(row['tags']), row['crossing_street_name'])
+                intersection['pedestrian_crossing_list'].append(signal)
         return intersection
 
-    def create_poi_by_id(self, poi_id):
-        try:
-            result = DBControl().fetch_data("SELECT osm_id, ST_X(geom) as x, ST_Y(geom) as y, tags, \
-                    outer_building_id, number_of_entrances \
-                    from poi where id = %d" % poi_id)[0]
-        except IndexError as e:
-            return {}
-        poi_id = int(poi_id)
-        osm_id = int(result['osm_id'])
-        lat = result['y']
-        lon = result['x']
-        tags = self.parse_hstore_column(result['tags'])
-        outer_building_id = int(result['outer_building_id'])
-        number_of_entrances = result['number_of_entrances']
-        return self.create_poi(poi_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances)
+
+    def create_entrance(self, osm_id, lat, lon, tags, entrance_label):
+        entrance = {}
+        if type(lat) is not float \
+                or type(lon) is not float \
+                or type(tags) is not dict:
+            return entrance
+        entrance = self.create_way_point(osm_id, lat, lon, tags)
+        if entrance == {}:
+            return entrance
+        entrance['type'] = "entrance"
+        entrance['sub_type'] = self.translator.translate("entrance", entrance_label)
+        entrance['label'] = entrance_label
+        # name
+        address = self.extract_address(tags)
+        if address:
+            entrance['name'] = address
+        else:
+            entrance['name'] = entrance['sub_type']
+        return entrance
+
+
+    def create_pedestrian_crossing(self, osm_id, lat, lon, tags, crossing_street_name):
+        crossing = {}
+        if type(lat) is not float \
+                or type(lon) is not float \
+                or type(tags) is not dict:
+            return crossing
+        crossing = self.create_way_point(osm_id, lat, lon, tags)
+        if crossing == {}:
+            return crossing
+        crossing['type'] = "pedestrian_crossing"
+
+        # sub type
+        if tags.has_key("crossing"):
+            crossing['sub_type'] = self.translator.translate("crossing", tags['crossing'])
+        elif tags.has_key("highway") and tags['highway'] == "crossing" \
+                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
+            crossing['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
+        elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
+            crossing['sub_type'] = self.translator.translate("highway", "traffic_signals")
+        elif tags.has_key("railway") and tags['railway'] == "crossing":
+            crossing['sub_type'] = self.translator.translate("railway", "crossing")
+        else:
+            crossing['sub_type'] = self.translator.translate("crossing", "unknown")
+
+        # name
+        if crossing_street_name != None:
+            crossing['name'] = crossing_street_name
+        else:
+            crossing['name'] = crossing['sub_type']
+
+        # traffic signals attributes
+        if tags.has_key("traffic_signals:sound"):
+            if tags['traffic_signals:sound'] == "no":
+                crossing['traffic_signals_sound'] = 0
+            elif tags['traffic_signals:sound'] in ["locate", "walk", "yes"]:
+                crossing['traffic_signals_sound'] = 1
+        if tags.has_key("traffic_signals:vibration"):
+            if tags['traffic_signals:vibration'] == "no":
+                crossing['traffic_signals_vibration'] = 0
+            elif tags['traffic_signals:vibration'] == "yes":
+                crossing['traffic_signals_vibration'] = 1
+        return crossing
+
 
     def create_poi(self, poi_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances):
         poi = {}
-        if type(poi_id) is not int or type(lat) is not float or type(lon) is not float \
-                or type(tags) is not dict or type(outer_building_id) is not int or type(number_of_entrances) is not int:
+        if type(poi_id) is not int \
+                or type(lat) is not float \
+                or type(lon) is not float \
+                or type(tags) is not dict \
+                or type(outer_building_id) is not int \
+                or type(number_of_entrances) is not int:
             return poi
         poi = self.create_way_point(osm_id, lat, lon, tags)
         if poi == {}:
             return poi
 
-        # parse tags
-        # address
-        address1 = ""
-        if tags.has_key("addr:street") and tags.has_key("addr:housenumber"):
-            address1 += "%s %s" % (tags['addr:street'], tags['addr:housenumber'])
-            if tags.has_key("addr:postcode"):
-                address1 += ", %s" % tags['addr:postcode']
-            if tags.has_key("addr:city"):
-                address1 += " %s" % tags['addr:city']
-        address2 = ""
-        if tags.has_key("street") and tags.has_key("housenumber"):
-            address2 += "%s %s" % (tags['street'], tags['housenumber'])
-            if tags.has_key("postcode"):
-                address2 += ", %s" % tags['postcode']
-            if tags.has_key("city"):
-                address2 += " %s" % tags['city']
-        if address1.__len__() > 0 or address2.__len__() > 0:
-            if address1.__len__() < address2.__len__():
-                poi['address'] = address2
-            else:
-                poi['address'] = address1
+        # parse address
+        address = self.extract_address(tags)
+        if address:
+            poi['address'] = address
 
         # type and subtype
         poi['type'] = "poi"
@@ -469,15 +579,6 @@ class POI:
                 poi['sub_type'] = self.translator.translate("building", tags['building'])
         elif poi.has_key("address") == True:
             poi['sub_type'] = self.translator.translate("poi", "address")
-        elif tags.has_key("crossing"):
-            poi['sub_type'] = self.translator.translate("crossing", tags['crossing'])
-        elif tags.has_key("highway") and tags['highway'] == "crossing" \
-                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
-            poi['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
-        elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
-            poi['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif tags.has_key("railway") and tags['railway'] == "crossing":
-            poi['sub_type'] = self.translator.translate("railway", "crossing")
 
         # name
         if tags.has_key("name"):
@@ -492,18 +593,6 @@ class POI:
             poi['name'] = poi['address']
         else:
             poi['name'] = poi['sub_type']
-
-        # traffic signals attributes
-        if tags.has_key("traffic_signals:sound"):
-            if tags['traffic_signals:sound'] == "no":
-                poi['traffic_signals_sound'] = 0
-            if tags['traffic_signals:sound'] == "yes":
-                poi['traffic_signals_sound'] = 1
-        if tags.has_key("traffic_signals:vibration"):
-            if tags['traffic_signals:vibration'] == "no":
-                poi['traffic_signals_vibration'] = 0
-            if tags['traffic_signals:vibration'] == "yes":
-                poi['traffic_signals_vibration'] = 1
 
         # contact
         if tags.has_key("contact:website"):
@@ -540,40 +629,26 @@ class POI:
             result = DBControl().fetch_data("SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags \
                     from entrances where poi_id = %d ORDER BY class" % poi_id)
             for row in result:
-                entrance = self.create_way_point(row['entrance_id'], row['lat'], row['lon'],
-                        self.parse_hstore_column(row['tags']))
-                entrance['name'] = self.translator.translate("entrance", row['label'])
-                entrance['type'] = "poi"
-                entrance['sub_type'] = self.translator.translate("entrance", "entrance")
-                entrance['entrance'] = row['label']
+                entrance = self.create_entrance(row['entrance_id'], row['lat'], row['lon'],
+                        self.parse_hstore_column(row['tags']), row['label'])
                 poi['entrance_list'].append(entrance)
         return poi
 
-    def create_station_by_id(self, station_id):
-        try:
-            result = DBControl().fetch_data("SELECT osm_id, ST_X(geom) as x, ST_Y(geom) as y, tags, \
-                    outer_building_id, number_of_entrances, number_of_lines \
-                    from stations where id = %d" % station_id)[0]
-        except IndexError as e:
-            return {}
-        station_id = int(station_id)
-        osm_id = int(result['osm_id'])
-        lat = result['y']
-        lon = result['x']
-        tags = self.parse_hstore_column(result['tags'])
-        outer_building_id = int(result['outer_building_id'])
-        number_of_entrances = result['number_of_entrances']
-        number_of_lines = result['number_of_lines']
-        return self.create_station(station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines)
 
     def create_station(self, station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances, number_of_lines):
         station = {}
-        if type(station_id) is not int or type(lat) is not float or type(lon) is not float or type(tags) is not dict or type(outer_building_id) is not int or type(number_of_entrances) is not int or type(number_of_lines) is not int:
+        if type(station_id) is not int \
+                or type(lat) is not float \
+                or type(lon) is not float \
+                or type(tags) is not dict \
+                or type(outer_building_id) is not int \
+                or type(number_of_entrances) is not int \
+                or type(number_of_lines) is not int:
             return poi
         station = self.create_poi(station_id, osm_id, lat, lon, tags, outer_building_id, number_of_entrances)
         if station == {}:
             return station
-    
+
         # parse tags
         station['type'] = "station"
         station['sub_type'] = self.translator.translate("public_transport", "unknown")
@@ -639,6 +714,7 @@ class POI:
                 station['lines'].append(line)
         return station
 
+
     #####
     # some helper functions
     #####
@@ -654,6 +730,32 @@ class POI:
             hstore[keyvalue[0]] = keyvalue[1]
         return hstore
 
+
+
+    def extract_address(self, tags):
+        address1 = ""
+        if tags.has_key("addr:street") and tags.has_key("addr:housenumber"):
+            address1 += "%s %s" % (tags['addr:street'], tags['addr:housenumber'])
+            if tags.has_key("addr:postcode"):
+                address1 += ", %s" % tags['addr:postcode']
+            if tags.has_key("addr:city"):
+                address1 += " %s" % tags['addr:city']
+        address2 = ""
+        if tags.has_key("street") and tags.has_key("housenumber"):
+            address2 += "%s %s" % (tags['street'], tags['housenumber'])
+            if tags.has_key("postcode"):
+                address2 += ", %s" % tags['postcode']
+            if tags.has_key("city"):
+                address2 += " %s" % tags['city']
+        if address1.__len__() > 0 or address2.__len__() > 0:
+            if address1.__len__() < address2.__len__():
+                return address2
+            else:
+                return address1
+        else:
+            return ""
+
+
     # function to group poi tags into categories
     # an overview over commonly used tags can be found at:
     # http://wiki.openstreetmap.org/wiki/Map_Features
@@ -662,6 +764,7 @@ class POI:
         tags['intersection'] = ""
         tags['station'] = ""
         tags['poi'] = ""
+        tags['entrance'] = ""
         tags['pedestrian_crossings'] = ""
 
         # prepare tag list
@@ -831,10 +934,13 @@ class POI:
         elif "other_intersection" in tag_list:
             tags['intersection'] = "other"
 
-        # pedestrian crossings
+        # entrances and pedestrian crossings
+        if "entrance" in tag_list:
+            tags['entrance'] = "entrance"
         if "pedestrian_crossings" in tag_list:
             tags['pedestrian_crossings'] = "pedestrian_crossings"
         return tags
+
 
     def insert_into_poi_list(self, poi_list, entry, lat, lon):
         if entry == {} or entry.has_key("name") == False \

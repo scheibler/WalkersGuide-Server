@@ -29,6 +29,7 @@ class Config:
                     'host' : 'example.org',
                     'port' : '23456',
                     'map_name' : 'example',
+                    'map_version' : '1',
                     'thread_pool' : '10' }
             self.config.DEFAULT_JAVAGATEWAY_SETTINGS = {
                     'gateway_port' : '25333' }

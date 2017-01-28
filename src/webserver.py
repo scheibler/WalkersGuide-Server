@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import os, cherrypy, json, math, time
+from datetime import datetime
 from py4j.java_gateway import JavaGateway, GatewayClient
 
 import geometry, helper
@@ -68,7 +69,7 @@ class RoutingWebService():
         # check if route is valid
         index = 0
         for part in source_route:
-            if part['type'] in ["way_point", "intersection", "poi", "station"]:
+            if part['type'] in ["point", "intersection", "poi", "station"]:
                 index += 1
                 if part.has_key("turn"):
                     part.__delitem__("turn")
@@ -325,7 +326,7 @@ class RoutingWebService():
         index = 0
         number_of_transport_parts = 0
         for part in source_route:
-            if part['type'] in ["way_point", "intersection", "poi", "station"]:
+            if part['type'] in ["point", "intersection", "poi", "station"]:
                 index += 1
             elif part['type'] in ["footway", "transport"]:
                 index -= 1
@@ -404,11 +405,11 @@ class RoutingWebService():
         # create the return tuple
         return_tuple = {}
         return_tuple['poi'] = []
-        return_tuple['warning'] = ""
         return_tuple['error'] = ""
         translator = Translator(Config().get_param("default_language"))
         # parse json encoded input
         options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        print(options)
 
         # user language
         language = ""
@@ -439,6 +440,7 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
         try:
             radius = int(options['radius'])
+            number_of_results = int(options['number_of_results'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_range_value")
             return helper.zip_data(return_tuple)
@@ -448,13 +450,12 @@ class RoutingWebService():
 
         # tags and search
         # tag list
-        if options.has_key("tags") == False:
+        if options.has_key("tags") == False \
+                or type(options['tags']) is not list \
+                or len(options['tags']) == 0:
             return_tuple['error'] = translator.translate("message", "no_tags_value")
             return helper.zip_data(return_tuple)
-        if options['tags'] == "":
-            return_tuple['error'] = translator.translate("message", "no_tags_value")
-            return helper.zip_data(return_tuple)
-        tag_list = options['tags'].split("+")
+        tag_list = options['tags']
         # search
         try:
             search = options['search']
@@ -477,7 +478,7 @@ class RoutingWebService():
 
         # get poi
         poi = POI(session_id, translator)
-        poi_list = poi.get_poi(lat, lon, radius, tag_list, search)
+        poi_list = poi.get_poi(lat, lon, radius, number_of_results, tag_list, search)
         if poi_list == None:
             Config().confirm_removement_of_session_id(session_id)
             return_tuple['poi'] = []
@@ -490,6 +491,7 @@ class RoutingWebService():
         return helper.zip_data(return_tuple)
     get_poi.exposed = True
 
+
     @cherrypy.tools.json_in()
     def get_departures(self):
         # set gzip header
@@ -497,19 +499,18 @@ class RoutingWebService():
         # create the return tuple
         return_tuple = {}
         return_tuple['departures'] = []
-        return_tuple['warning'] = ""
         return_tuple['error'] = ""
         translator = Translator(Config().get_param("default_language"))
         # parse json encoded input
         options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
 
         # user language
-        language = ""
-        if options.has_key("language") == True:
-            language = options['language']
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
+        language = Config().get_param("default_language")
+        session_locale = gateway.jvm.java.util.Locale.ENGLISH
+        if options.has_key("language"):
+            if options['language'] != "de":
+                language = options['language']
+                session_locale = gateway.jvm.java.util.Locale.GERMAN
         # initialize the translator object with the user's choosen language
         translator = Translator(language)
 
@@ -530,10 +531,9 @@ class RoutingWebService():
         except ValueError as e:
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
-        try:
-            vehicles = options['vehicles'].split("+")
-        except KeyError as e:
-            vehicles = []
+        vehicle_list = []
+        if options.has_key("vehicles") and type(options['vehicles']) is list:
+            vehicle_list = options['vehicles']
 
         # get the nearest stations for this coordinates and take the first one
         gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
@@ -553,9 +553,10 @@ class RoutingWebService():
 
         # get departures for station
         sfinder = StationFinder(translator)
-        station = sfinder.choose_station_by_vehicle_type(closest_stations_result.locations, lat, lon, vehicles)
+        station = sfinder.choose_station_by_vehicle_type(
+                closest_stations_result.locations, lat, lon, vehicle_list)
         departures_result = main_point.getDepartures( station.id)
-        date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", gateway.jvm.java.util.Locale.GERMAN)
+        date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", session_locale)
         for station_departure in departures_result.stationDepartures:
             for departure in station_departure.departures:
                 try:
@@ -575,56 +576,6 @@ class RoutingWebService():
         return helper.zip_data(return_tuple)
     get_departures.exposed = True
 
-    @cherrypy.tools.json_in()
-    def get_bug_report(self):
-        # set gzip header
-        cherrypy.response.headers['Content-Type'] = 'application/gzip'
-        # create return tuple
-        return_tuple = {}
-        return_tuple['status'] = "failed"
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-
-        # parse json encoded input
-        input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
-
-        # user language
-        language = ""
-        if input.has_key("language") == True:
-            language = input['language']
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
-
-        # bug report variables
-        if input.has_key("file_name") == False:
-            return_tuple['error'] = translator.translate("message", "no_bug_report_file_name")
-            return helper.zip_data(return_tuple)
-        if input.has_key("bug_report") == False:
-            return_tuple['error'] = translator.translate("message", "no_bug_report_contents")
-            return helper.zip_data(return_tuple)
-
-        # save bug report
-        try:
-            bug_report_folder = os.path.join( Config().get_param("logs_folder"), "client")
-            if os.path.exists(bug_report_folder) == False:
-                os.makedirs(bug_report_folder)
-            file = open(os.path.join(bug_report_folder, input['file_name'].split("/")[-1]), 'w')
-            file.write(input['bug_report'])
-            file.close()
-        except IOError as e:
-            pass
-
-        # send mail to the admin
-        helper.send_email("OSMRouter: New bug report", "%s\n\n%s"
-                % (input['file_name'].split("/")[-1], input['bug_report']) )
-
-        # convert return_tuple to json and zip it, before returning
-        return_tuple['status'] = "ok"
-        return helper.zip_data(return_tuple)
-    get_bug_report.exposed = True
 
     @cherrypy.tools.json_in()
     def cancel_request(self):
@@ -632,58 +583,60 @@ class RoutingWebService():
         cherrypy.response.headers['Content-Type'] = 'application/gzip'
         # create the return tuple
         return_tuple = {}
-        return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        translator = Translator(Config().get_param("default_language"))
         # parse json encoded input
         options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        # user language
+        language = ""
+        if options.has_key("language") == True:
+            language = options['language']
+        # if the user sends a language, which is not german, take the default language setting
+        if language != "de":
+            language = Config().get_param("default_language")
+        # initialize the translator object with the user's choosen language
+        translator = Translator(language)
         # create session id
         if options.has_key("session_id") == False:
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
             return helper.zip_data(return_tuple)
+        # request cancelling of running processes
         Config().query_removement_of_session_id(options['session_id'])
         print "cancel session id %s" % options['session_id']
         return helper.zip_data(return_tuple)
     cancel_request.exposed = True
 
-    def get_all_supported_poi_tags(self):
-        # set gzip header
-        cherrypy.response.headers['Content-Type'] = 'application/gzip'
-        # create the return tuple
-        return_tuple = {}
-        return_tuple['supported_poi_tags'] = "favorites" \
-                "+transport_bus_tram+transport_train_lightrail_subway+transport_airport_ferry_aerialway+transport_taxi" \
-                "+food+entertainment+tourism+nature+finance+shop+health+education+public_service+all_buildings_with_name" \
-                "+surveillance+bench+trash+bridge+named_intersection+other_intersection+pedestrian_crossings"
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-        # convert return_tuple to json and zip it, before returning
-        return helper.zip_data(return_tuple)
-    get_all_supported_poi_tags.exposed = True
 
-    def get_version(self):
+    def get_status(self):
         # set gzip header
         cherrypy.response.headers['Content-Type'] = 'application/gzip'
         # create the return tuple
         return_tuple = {}
-        return_tuple['warning'] = ""
-        return_tuple['error'] = ""
-        return_tuple['interface'] = 5
-        return_tuple['server'] = "0.5.0"
-        # try to get map version
+        # map name and version
         return_tuple['map_name'] = Config().get_param("map_name")
-        return_tuple['map_version'] = ""
-        map_version_file = os.path.join(Config().get_param("maps_folder"), "state.txt.productive")
-        if os.path.exists(map_version_file):
-            file = open(map_version_file, 'r')
-            for line in file.readlines():
-                if line.startswith("timestamp"):
-                    return_tuple['map_version'] = line.split("=")[1].split("T")[0]
-                    break
-            file.close()
+        return_tuple['map_version'] = Config().get_param("map_version")
+        # try to get map creation date
+        try:
+            with open(os.path.join(Config().get_param("maps_folder"), "state.txt.productive"), "r") as f:
+                for line in f.readlines():
+                    if line.startswith("timestamp"):
+                        map_creation_date = datetime.strptime(
+                                line.split("=")[1].replace("\\", "").strip(),
+                                "%Y-%m-%dT%H:%M:%SZ")
+                        map_creation_unix_float = time.mktime(map_creation_date.timetuple())
+                        return_tuple['map_created'] = int(map_creation_unix_float)*1000
+                        break
+        except IOError, ValueError:
+            return_tuple['map_created'] = 0
+        # supported poi categories
+        return_tuple['supported_poi_tags'] = ["transport_bus_tram", "transport_train_lightrail_subway",
+                "transport_airport_ferry_aerialway", "transport_taxi", "food", "entertainment",
+                "tourism", "nature", "finance", "shop", "health", "education", "public_service",
+                "all_buildings_with_name", "entrance", "surveillance", "bench", "trash", "bridge",
+                "named_intersection", "other_intersection", "pedestrian_crossings"]
         # convert return_tuple to json and zip it, before returning
         return helper.zip_data(return_tuple)
-    get_version.exposed = True
+    get_status.exposed = True
+
 
 ###################
 ### start webserver

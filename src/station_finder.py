@@ -33,7 +33,7 @@ class StationFinder:
     def find_station_in_osm_database(self, lat, lon, line, direction):
         if type(direction) == type(u""):
             direction = direction.encode("utf-8")
-        new_station = {"lat":lat, "lon":lon, "node_id":-1, "accuracy":False, "type":"station"}
+        new_station = {"lat":lat, "lon":lon, "node_id":-1, "exact_position":False, "type":"station"}
         t1 = time.time()
         if line.startswith("T") == True or line.startswith("B") == True:
             # transport class 1
@@ -69,7 +69,7 @@ class StationFinder:
                         if s.replace(",", "").strip().lower() not in l['to'].strip().lower():
                             db_direction_in_osm_direction = False
                     if osm_direction_in_db_direction or db_direction_in_osm_direction:
-                        station['accuracy'] = True
+                        station['exact_position'] = True
                         station['transportation_class'] = 1
                         return station 
 
@@ -91,10 +91,10 @@ class StationFinder:
                 radius *= 2
             station = station_list[0]
             station['transportation_class'] = 2
-            station['accuracy'] = False
+            station['exact_position'] = False
             if station.has_key("entrance_list") == True:
                 if station['entrance_list'].__len__() > 0:
-                    station['accuracy'] = True
+                    station['exact_position'] = True
                     station['lat'] = station['entrance_list'][0]['lat']
                     station['lon'] = station['entrance_list'][0]['lon']
             return station

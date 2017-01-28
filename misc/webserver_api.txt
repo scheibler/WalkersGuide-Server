@@ -1,0 +1,54 @@
+API
+===
+
+Walkersguide-Manager
+--------------------
+
+get_available_maps():
+* input: None
+* output: json
+    * available_maps: Dict<Name:String, Port:Integer>
+
+
+WalkersGuide-MapServer
+----------------------
+
+get_poi():
+* input: json via post
+    * session_id: String
+    * lat: Double
+    * lon: Double
+    * radius: Integer
+    * number_of_results: Integer
+    * tags: List<String>
+    + language: String      ["de", "en"]
+    + search: String
+* output: gzipped json
+    * poi: List<Point>
+    + error: String
+
+get_departures():
+* input: json via post
+    * lat: Double
+    * lon: Double
+    + language: String      ["de", "en"]
+    + vehicle_list: List<String>
+* output: gzipped json
+    * departures: List<Departure>
+    + error: String
+
+cancel_request():
+* input: json via post
+    * session_id: String
+    + language: String      ["de", "en"]
+* output: gzipped json
+    + error: String
+
+get_status():
+* input: None
+* output: gzipped json
+    * map_name: String
+    * map_version: Integer
+    * map_created: Long
+    * supported_poi_tags: List<String>
+

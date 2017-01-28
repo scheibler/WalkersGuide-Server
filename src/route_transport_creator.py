@@ -238,7 +238,7 @@ class RouteTransportCreator:
                     # the last route segment was either a footway part or the route is still empty
                     # get cost for first departure
                     if departure['transportation_class'] == 1:
-                        if departure['accuracy'] == True:
+                        if departure['exact_position'] == True:
                             cost += self.costs['change_1']
                             self.route_logger.append_to_log("%s: enter tc1 +acc (+%d)" % 
                                     (departure['name'], self.costs['change_1']))
@@ -247,7 +247,7 @@ class RouteTransportCreator:
                             self.route_logger.append_to_log("%s: enter tc1 -acc (+%d)" % 
                                     (departure['name'], self.costs['change_2']))
                     else:
-                        if departure['accuracy'] == True:
+                        if departure['exact_position'] == True:
                             cost += self.costs['change_2']
                             self.route_logger.append_to_log("%s: enter tc2 with entrance (+%d)" % 
                                     (departure['name'], self.costs['change_2']))
@@ -276,7 +276,7 @@ class RouteTransportCreator:
                     if last_arrival['transportation_class'] == 1 and departure['transportation_class'] == 1:
 
                         # tc1-tc1: arrival and departure positions known
-                        if last_arrival['accuracy'] == True and departure['accuracy'] == True:
+                        if last_arrival['exact_position'] == True and departure['exact_position'] == True:
                             # same platform, user can wait for next vehicle
                             if last_arrival['node_id'] == departure['node_id']:
                                 cost += self.costs['change_1']
@@ -328,7 +328,7 @@ class RouteTransportCreator:
                                             (last_arrival['name'], departure['name'], self.costs['change_3']))
 
                         # tc1-tc1: only the destination station of the change is known
-                        elif departure['accuracy'] == True:
+                        elif departure['exact_position'] == True:
                             if last_arrival['station_id'] == departure['station_id']:
                                 placeholder_segment['name'] = self.translator.translate("transport_creator", "nearby_station")
                                 placeholder_segment['sub_type'] = self.translator.translate("highway", "footway")
@@ -384,7 +384,7 @@ class RouteTransportCreator:
                         # station has entrances
                         placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                         placeholder_segment['sub_type'] = "footway_place_holder"
-                        if departure['accuracy'] == True:
+                        if departure['exact_position'] == True:
                             if time_for_change < self.short_change_interval:
                                 cost += self.costs['change_not_enough_time']
                                 self.route_logger.append_to_log("%s - %s: tc1-tc2+entr (+%d)" % 
@@ -408,7 +408,7 @@ class RouteTransportCreator:
                         # exact position of station known
                         placeholder_segment['name'] = self.translator.translate("transport_creator", "footway_place_holder")
                         placeholder_segment['sub_type'] = "footway_place_holder"
-                        if departure['accuracy'] == True:
+                        if departure['exact_position'] == True:
                             if time_for_change < self.short_change_interval:
                                 cost += self.costs['change_not_enough_time']
                                 self.route_logger.append_to_log("%s - %s: tc2-tc1+exact (+%d)" % 

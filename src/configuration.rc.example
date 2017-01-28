@@ -14,6 +14,7 @@ db_password = password
 host = 127.0.0.1
 port = 23456
 map_name = Europe
+map_version = 1
 thread_pool = 10
 
 [javagateway_settings]
