@@ -1,0 +1,41 @@
+apply plugin: 'java'
+
+dependencies {
+    compile 'com.squareup.okhttp3:okhttp:3.5.0'
+    compile 'com.squareup.okhttp3:logging-interceptor:3.5.0'
+    compile 'com.google.guava:guava:20.0'
+    compile 'org.slf4j:slf4j-api:1.7.21'
+    compile 'com.google.code.findbugs:jsr305:3.0.0'
+    compile 'org.json:json:20090211' // provided by Android
+    compile 'net.sf.kxml:kxml2:2.3.0' // provided by Android
+    compile 'net.sf.py4j:py4j:0.8.1'
+    compile files('libs/public-transport-enabler-release-2017-01-28.jar')
+}
+
+repositories {
+    jcenter()
+}
+
+sourceSets {
+    main {
+        java.srcDirs = ['src']
+        resources.srcDirs = ['src']
+    }
+}
+
+compileJava {
+    sourceCompatibility '1.7'
+    targetCompatibility '1.7'
+}
+
+jar {
+    manifest {
+        attributes(
+            'Class-Path': configurations.compile.collect { it.getName() }.join(' '),
+            'Main-Class': 'Main'
+        )
+    }
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}

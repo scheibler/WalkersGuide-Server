@@ -1,9 +1,9 @@
 import java.io.IOException;
+import java.lang.Throwable;
 import java.util.Date;
 import java.util.EnumSet;
 import java.util.List;
 
-import de.schildbach.pte.BahnProvider;
 import de.schildbach.pte.NetworkProvider;
 import de.schildbach.pte.NetworkProvider.Accessibility;
 import de.schildbach.pte.NetworkProvider.Optimize;
@@ -15,19 +15,25 @@ import de.schildbach.pte.dto.Product;
 import de.schildbach.pte.dto.QueryDeparturesResult;
 import de.schildbach.pte.dto.QueryTripsResult;
 
+import de.schildbach.pte.BahnProvider;
+import de.schildbach.pte.VbbProvider;
+import de.schildbach.pte.VvoProvider;
+
 public class QueryData {
 
-    private NetworkProvider provider;
+    private static final String VBB_IDENTIFIER = "vbb";
+    private static final String VVO_IDENTIFIER = "vvo";
 
     public QueryData() {
-        this.provider = new BahnProvider();
     }
 
     public Location createAddressObject(int latitude, int longitude) {
         return new Location(LocationType.ADDRESS, null, latitude, longitude);
     }
 
-    public QueryTripsResult calculateConnection(Location from, Location to, int delay) {
+    public QueryTripsResult calculateConnection(
+            String providerIdentifier, Location from, Location to, int delay) {
+        NetworkProvider provider = this.getProvider(providerIdentifier);
         Date departureDate = new Date( System.currentTimeMillis() + delay*60000 );
         try {
             QueryTripsResult result = provider.queryTrips(
@@ -52,22 +58,37 @@ public class QueryData {
         }        
     }
 
-    public QueryDeparturesResult getDepartures(String stationID) {
+    public QueryDeparturesResult getDepartures(String providerIdentifier, String stationID) {
+        System.out.println("station id: " + stationID);
+        NetworkProvider provider = this.getProvider(providerIdentifier);
         try {
-            return provider.queryDepartures(stationID,
-                    new Date( System.currentTimeMillis()), 0, false);
+            return provider.queryDepartures(stationID, new Date(), 0, false);
         } catch (IOException e) {
+            System.out.println("error: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }        
     }
 
-    public NearbyLocationsResult getNearestStations(int latitude, int longitude) {
+    public NearbyLocationsResult getNearestStations(
+            String providerIdentifier, int latitude, int longitude) {
+        NetworkProvider provider = this.getProvider(providerIdentifier);
         try {
             return provider.queryNearbyLocations(
                     EnumSet.of(LocationType.STATION), Location.coord(latitude, longitude), 0, 0);
         } catch (IOException e) {
             return null;
         }        
+    }
+
+    private NetworkProvider getProvider(String identifier) {
+        if (identifier != null && identifier.equals(VBB_IDENTIFIER)) {
+            return new VbbProvider();
+        } else if (identifier != null && identifier.equals(VVO_IDENTIFIER)) {
+            return new VvoProvider();
+        } else {
+            return new BahnProvider();
+        }
     }
 
 }

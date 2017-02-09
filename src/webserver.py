@@ -539,6 +539,7 @@ class RoutingWebService():
         gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
         main_point = gateway.entry_point
         closest_stations_result = main_point.getNearestStations(
+                options.get("provider"),
                 geometry.convert_coordinate_to_int(lat),
                 geometry.convert_coordinate_to_int(lon))
         if closest_stations_result.status.toString() == "INVALID_STATION":
@@ -555,7 +556,8 @@ class RoutingWebService():
         sfinder = StationFinder(translator)
         station = sfinder.choose_station_by_vehicle_type(
                 closest_stations_result.locations, lat, lon, vehicle_list)
-        departures_result = main_point.getDepartures( station.id)
+        departures_result = main_point.getDepartures(
+                options.get("provider"), station.id)
         date_format = gateway.jvm.java.text.SimpleDateFormat("HH:mm", session_locale)
         for station_departure in departures_result.stationDepartures:
             for departure in station_departure.departures:
