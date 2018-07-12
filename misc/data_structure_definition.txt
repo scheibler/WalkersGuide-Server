@@ -40,6 +40,16 @@ entrance:                       extends from point
 * type:                         "entrance"
 + label:                        String          entrance type (main, emergency, ect.)
 
+GPS:                            extends from point
+* type:                         "gps"
++ accuracy:                     Float
++ altitude:                     Double
++ bearing:                      Float
++ number_of_satellites:         Integer
++ provider:                     String          [gps, network, fused]
++ speed:                        Float
++ time:                         Long            Creation time
+
 pedestrian_crossing:            extends from point
 * type:                         "pedestrian_crossing"
 + traffic_signals_sound:        Integer         acustic signal for traffic signals
@@ -57,6 +67,9 @@ Poi:                            extends from point
 + opening_hours:                String
 + website:                      String
 
+StreetAddress:                  extends from point
+* type:                         "street_address"
+
 station:                        extends from point
 * type:                         "station"
 + lines:                        list<line>      list of lines for this station
@@ -69,8 +82,7 @@ station:                        extends from point
 Departure:
 * nr:           String      line number
 * to:           String      direction
-* time:         String      absolute departure time
-* remaining:    Integer     remaining time until departure in minutes
+* time:         Long        departure time (unix timestamp)
 
 line:
 * nr:       String      line number
@@ -80,37 +92,45 @@ line:
 Way segments
 ------------
 
-footway:
-* type:             "footway"
-* sub_type:         String
-* name:             String
-+ lanes:            Integer         number of street lanes
-                    [lanes >= 0, default: unknown = -1]
-+ pois:             List<Point>     List of points (e. x. intersections along the way)
-+ segregated:       Integer         shared ways like footway/cycleway use different lanes
-                    [0 = no, 1 = yes, default: -1 = unknown]
-+ sidewalk:         Integer         street contains sidewalk
-                    [0 = no, 1 = left, 2 = right, 3 = both, default: -1 = unknown]
-+ surface:          String
-+ tactile_paving:   Integer         tactile markings for white cane users
-                    [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
-+ tram:             Integer         tran railway on street
-                    [0 = no, 1 = yes, default: -1 = unknown]
-+ way_id            Long            way id from osm database
-                    [way_id >= 0, default: unknown = -1]
-+ wheelchair:       Integer         wheelchair accessibility
-                    [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
-+ width:            Double          way width of way
-                    [width >= 0.0, default: unknown = -1.0]
-+ distance:         Integer         Length of way segment (only for routes and intersections)
-                    [distance >= 0, default: unknown = -1]
-+ bearing:          Integer         Length of way segment (only for routes and intersections)
-                    [0 <= bearing <= 359, default: unknown = -1]
+segment:
+* type:                     "segment"
+* sub_type:                 String
+* name:                     String
 
-transport:
+footway:                        extends from segment
+* type:                     "footway"
+* bearing:          Integer         Bearing of the way segment
+                    [0 <= bearing <= 359, default: unknown = -1]
++ lanes:                    Integer         number of street lanes
+                                [lanes >= 0, default: unknown = -1]
++ pois:                     List<Point>     List of points (e. x. intersections along the way)
++ segregated:               Integer         shared ways like footway/cycleway use different lanes
+                                [0 = no, 1 = yes, default: -1 = unknown]
++ sidewalk:                 Integer         street contains sidewalk
+                                [0 = no, 1 = left, 2 = right, 3 = both, default: -1 = unknown]
++ surface:                  String
++ tactile_paving:           Integer         tactile markings for white cane users
+                                [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
++ tram:                     Integer         tran railway on street
+                                [0 = no, 1 = yes, default: -1 = unknown]
++ way_id                    Long            way id from osm database
+                                [way_id >= 0, default: unknown = -1]
++ wheelchair:               Integer         wheelchair accessibility
+                                [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
++ width:                    Double          way width of way
+                                [width >= 0.0, default: unknown = -1.0]
+
+intersection_segment:           extends from footway
+* type:                     "footway_intersection"
+* intersection_name:        String
+
+route_segment:                  extends from footway
+* type:                     "footway_route"
+* distance:         Integer         Distance of the segment between two route points
+                    [distance >= 0, default: unknown = -1]
+
+transport:                      extends from segment
 * type:                             "transport"
-* sub_type:                         String
-* name:                             String
 * line:                             String
 * direction:                        String
 * departure_time:                   String

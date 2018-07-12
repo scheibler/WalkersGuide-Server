@@ -31,6 +31,14 @@ sender_mail_server_login = email@example.org
 sender_mail_server_password = password
 recipient_address = recipient@example.org
 
-[user_language_settings]
+[language_list]
+de = Deutsch
+en = English
+
+[public_transport_provider_list]
+db = Deutsche Bahn
+
+[user_settings]
 default_language = en
+default_public_transport_provider = db
 

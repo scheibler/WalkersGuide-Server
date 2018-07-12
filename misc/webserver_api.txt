@@ -13,6 +13,19 @@ get_available_maps():
 WalkersGuide-MapServer
 ----------------------
 
+get_route():
+* input: json via post
+    * session_id: String
+    * source_points: List<Point>
+    + allowed_way_classes: List<String>
+    + blocked_ways: List<Integer>
+    + indirection_factor: Integer
+    + language: String      ["de", "en"]
+* output: gzipped json
+    * description: String
+    * route: List<Point,Segment,Point,...>
+    + error: String
+
 get_poi():
 * input: json via post
     * session_id: String
@@ -29,10 +42,11 @@ get_poi():
 
 get_departures():
 * input: json via post
-    * lat: Double
+    * lat: double
     * lon: Double
     + language: String      ["de", "en"]
     + vehicle_list: List<String>
+    + public_transport_provider : String      ["de", "en"]
 * output: gzipped json
     * departures: List<Departure>
     + error: String
@@ -51,4 +65,8 @@ get_status():
     * map_version: Integer
     * map_created: Long
     * supported_poi_tags: List<String>
+    * supported_languages: Dict<Identifier:String,Name:String>
+    * supported_public_transport_provider: Dict<Identifier:String,Name:String>
+    * supported_indirection_factors: List<Integer>
+    * supported_way_classes: List<String>
 

@@ -245,7 +245,7 @@ class RouteFootwayCreator:
                 continue
             part = DBControl().fetch_data("SELECT * from %s where id=%d" \
                     % (self.temp_routing_table_name, r['edge_id']))[0]
-    
+
             # exception for the first route segment
             # add start point of route first
             if part['source'] == best_route.start_vertex_tuple.point_id:
@@ -264,7 +264,7 @@ class RouteFootwayCreator:
                     next_point = self.poi.create_way_point_by_id(part['osm_target_id'])
                 self.route.append(next_point)
                 last_target_id = part['target']
-    
+
             # create next point
             if last_target_id == part['source']:
                 next_point = self.poi.create_intersection_by_id(part['osm_target_id'])
@@ -292,16 +292,21 @@ class RouteFootwayCreator:
         self.route_logger.append_to_log("\n-------------\n")
 
         # if no route was found, just use the direct connection between start and destination
-        if self.route.__len__() <= 1:
-            segment = {"name":self.translator.translate("footway_creator", "direct_connection"),
-                    "type":"footway", "sub_type":"", "way_id":-1}
-            segment['bearing'] = geometry.bearing_between_two_points( start_point['lat'], start_point['lon'], dest_point['lat'], dest_point['lon'])
-            segment['distance'] = geometry.distance_between_two_points( start_point['lat'], start_point['lon'], dest_point['lat'], dest_point['lon'])
-            self.route.append(start_point)
-            self.route.append(segment)
-            self.route.append(dest_point)
+        if len(self.route) < 3:
             DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
-            return self.route
+            beeline_route = []
+            beeline_route.append(start_point)
+            beeline_route.append(
+                    {
+                        "name" : self.translator.translate("footway_creator", "direct_connection"),
+                        "type" : "footway_route",
+                        "sub_type" : self.translator.translate("footway_creator", "direct_connection"),
+                        "way_id" : -1,
+                        "bearing" : geometry.bearing_between_two_points( start_point['lat'], start_point['lon'], dest_point['lat'], dest_point['lon']),
+                        "distance" : geometry.distance_between_two_points( start_point['lat'], start_point['lon'], dest_point['lat'], dest_point['lon'])
+                    })
+            beeline_route.append(dest_point)
+            return beeline_route
 
         # add start point
         first_segment = None
@@ -342,6 +347,7 @@ class RouteFootwayCreator:
         if first_segment != None:
             print "really added"
             self.route[0]['turn'] = turn
+            first_segment['type'] = "footway_route"
             first_segment['bearing'] = bearing_start_p0
             first_segment['distance'] = distance_start_p0
             self.route.insert(0, first_segment)
@@ -506,7 +512,7 @@ class RouteFootwayCreator:
                     if transport_seg_index == 0:
                         transport_seg_index = index
                     number_of_transport_segments += 1
-                if route[index]['type'] == "footway":
+                if route[index]['type'] == "footway_route":
                     route_length += route[index]['distance']
         # return route description
         if number_of_transport_segments > 0:
@@ -586,6 +592,7 @@ class RouteFootwayCreator:
         except IndexError as e:
             pass
         # calculate the updated distance and bearing to the potentially new prev point
+        next_segment['type'] = "footway_route"
         next_segment['bearing'] = geometry.bearing_between_two_points(
                 self.route[-1]['lat'], self.route[-1]['lon'],
                 next_point['lat'], next_point['lon'])
@@ -604,7 +611,7 @@ class RouteFootwayCreator:
         self.route.append(next_point)
 
     def important_intersection(self, intersection, prev_segment = {}):
-        if intersection.has_key("sub_points") == False:
+        if intersection.has_key("way_list") == False:
             return False
         classes = [ self.translator.translate("highway", "primary"), self.translator.translate("highway", "primary_link"),
             self.translator.translate("highway", "secondary"), self.translator.translate("highway", "secondary_link"),
@@ -613,20 +620,18 @@ class RouteFootwayCreator:
             self.translator.translate("highway", "unclassified"), self.translator.translate("highway", "living_street") ]
         big_streets = []
         tram_or_rail = False
-        for sub_point in intersection['sub_points']:
-            if sub_point['sub_type'] in classes and sub_point['name'] not in big_streets:
-                big_streets.append(sub_point['name'])
-            if sub_point['sub_type'] in [self.translator.translate("railway", "tram"), self.translator.translate("railway", "rail")]:
+        for way in intersection['way_list']:
+            if way['sub_type'] in classes and way['name'] not in big_streets:
+                big_streets.append(way['name'])
+            if way['sub_type'] in [self.translator.translate("railway", "tram"), self.translator.translate("railway", "rail")]:
                 tram_or_rail = True
         if big_streets.__len__() > 1:
             return True
         elif big_streets.__len__() > 0 \
                 and prev_segment.has_key("sub_type") == True and prev_segment['sub_type'] not in classes:
             return True
-        elif tram_or_rail == True:
-            return True
         else:
-            return False
+            return tram_or_rail
 
     def get_route_segment_sub_points(self, routing_table_id, reverse):
         c_list = DBControl().fetch_data("" \
@@ -664,7 +669,7 @@ class RouteFootwayCreator:
             big_street_vertex = -1
         t1 = time.time()
 
-        # get nearest way segments
+        # get closest way segments
         nearest_lines = DBControl().fetch_data("\
                 SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                     ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \

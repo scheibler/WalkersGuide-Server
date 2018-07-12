@@ -365,6 +365,7 @@ class POI:
                 segment['width'] = float(tags['width'])
             except ValueError as e:
                 pass
+        segment['bearing'] = -1
         return segment
 
     def create_intersection_by_id(self, osm_id):
@@ -439,9 +440,9 @@ class POI:
                     street['way_id'],
                     self.parse_hstore_column(street['way_tags']),
                     street['direction'] == "B")
+            sub_segment['type'] = "footway_intersection"
+            sub_segment['intersection_name'] = intersection['name']
             sub_segment['bearing'] = geometry.bearing_between_two_points(
-                    intersection['lat'], intersection['lon'], street['lat'], street['lon'])
-            sub_segment['distance'] = geometry.distance_between_two_points(
                     intersection['lat'], intersection['lon'], street['lat'], street['lon'])
             intersection['way_list'].append(sub_segment)
 
@@ -578,6 +579,7 @@ class POI:
             else:
                 poi['sub_type'] = self.translator.translate("building", tags['building'])
         elif poi.has_key("address") == True:
+            poi['type'] = "street_address"
             poi['sub_type'] = self.translator.translate("poi", "address")
 
         # name

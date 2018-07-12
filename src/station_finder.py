@@ -10,10 +10,11 @@ from translator import Translator
 
 class StationFinder:
 
-    def __init__(self, translator_object):
+    def __init__(self, translator_object, public_transport_provider,):
         self.translator = translator_object
         self.poi = POI("00000", translator_object, True)
         self.stations = []
+        self.public_transport_provider, = public_transport_provider,
 
     def get_station(self, db_station, line, direction):
         new_station = { "line": line, "direction": direction, "data":{},
@@ -103,13 +104,15 @@ class StationFinder:
         return new_station 
 
     def choose_station_by_vehicle_type(self, station_list, lat, lon, vehicles):
+        print(station_list)
         gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
         for station in station_list:
             distance_to_station = geometry.distance_between_two_points(lat, lon,
                     geometry.convert_coordinate_to_float(station.lat),
                     geometry.convert_coordinate_to_float(station.lon))
             if distance_to_station < 100:
-                departures_result = gateway.entry_point.getDepartures(station.id)
+                departures_result = gateway.entry_point.getDepartures(
+                        self.public_transport_provider, station.id)
                 for station_departure in departures_result.stationDepartures:
                     for departure in station_departure.departures:
                         try:

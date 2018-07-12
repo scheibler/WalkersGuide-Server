@@ -24,9 +24,6 @@ public class QueryData {
     private static final String VBB_IDENTIFIER = "vbb";
     private static final String VVO_IDENTIFIER = "vvo";
 
-    public QueryData() {
-    }
-
     public Location createAddressObject(int latitude, int longitude) {
         return new Location(LocationType.ADDRESS, null, latitude, longitude);
     }
@@ -49,11 +46,9 @@ public class QueryData {
                 }
             }
             return result;
-        } catch (IOException e) {
-            return null;
-        } catch (IllegalStateException e) {
-            return null;
-        } catch (NullPointerException e) {
+        } catch (IOException | IllegalStateException | NullPointerException e) {
+            System.out.println("queryTrips error: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }        
     }
@@ -64,7 +59,7 @@ public class QueryData {
         try {
             return provider.queryDepartures(stationID, new Date(), 0, false);
         } catch (IOException e) {
-            System.out.println("error: " + e.getMessage());
+            System.out.println("getDepartures error: " + e.getMessage());
             e.printStackTrace();
             return null;
         }        
@@ -75,8 +70,10 @@ public class QueryData {
         NetworkProvider provider = this.getProvider(providerIdentifier);
         try {
             return provider.queryNearbyLocations(
-                    EnumSet.of(LocationType.STATION), Location.coord(latitude, longitude), 0, 0);
+                    EnumSet.of(LocationType.STATION), Location.coord(latitude, longitude), 250, 10);
         } catch (IOException e) {
+            System.out.println("getNearestStations error: " + e.getMessage());
+            e.printStackTrace();
             return null;
         }        
     }

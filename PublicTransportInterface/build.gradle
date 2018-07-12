@@ -9,7 +9,7 @@ dependencies {
     compile 'org.json:json:20090211' // provided by Android
     compile 'net.sf.kxml:kxml2:2.3.0' // provided by Android
     compile 'net.sf.py4j:py4j:0.8.1'
-    compile files('libs/public-transport-enabler-release-2017-01-28.jar')
+    compile files('libs/public-transport-enabler-release-2017-03-26.jar')
 }
 
 repositories {

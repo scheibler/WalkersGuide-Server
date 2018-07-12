@@ -42,8 +42,14 @@ class Config:
                     'sender_mail_server_login' : 'email@example.org',
                     'sender_mail_server_password' : 'password',
                     'recipient_address' : 'recipient@example.org' }
-            self.config.DEFAULT_USER_LANGUAGE = {
-                    'default_language' : 'en' }
+            self.config.DEFAULT_LANGUAGE_LIST = {
+                    'de' : 'Deutsch',
+                    'en' : 'English' }
+            self.config.DEFAULT_PUBLIC_TRANSPORT_PROVIDER_LIST = {
+                    'db' : 'Deutsche Bahn' }
+            self.config.DEFAULT_USER = {
+                    'default_language' : 'en',
+                    'default_public_transport_provider' : 'db' }
             self.set_defaults()
             # read from config file and overwrite default options
             # if the file does not exist, create it with default values and exit
@@ -76,9 +82,24 @@ class Config:
             self.config.add_section('email')
             for key, value in self.config.DEFAULT_EMAIL.items():
                 self.config.set('email', key, value)
-            self.config.add_section('user_language_settings')
-            for key, value in self.config.DEFAULT_USER_LANGUAGE.items():
-                self.config.set('user_language_settings', key, value)
+            self.config.add_section('language_list')
+            for key, value in self.config.DEFAULT_LANGUAGE_LIST.items():
+                self.config.set('language_list', key, value)
+            self.config.add_section('public_transport_provider_list')
+            for key, value in self.config.DEFAULT_PUBLIC_TRANSPORT_PROVIDER_LIST.items():
+                self.config.set('public_transport_provider_list', key, value)
+            self.config.add_section('user_settings')
+            for key, value in self.config.DEFAULT_USER.items():
+                self.config.set('user_settings', key, value)
+
+        def get_section(self, section):
+            data = {}
+            try:
+                for key in self.config.options(section):
+                    data[key] = self.config.get(section, key)
+            except configparser.NoSectionError:
+                pass
+            return data
 
         def get_param(self, key):
             value = None
@@ -107,7 +128,15 @@ class Config:
             except configparser.NoOptionError:
                 pass
             try:
-                value = self.config.get('user_language_settings', key)
+                value = self.config.get('language_list', key)
+            except configparser.NoOptionError:
+                pass
+            try:
+                value = self.config.get('public_transport_provider_list', key)
+            except configparser.NoOptionError:
+                pass
+            try:
+                value = self.config.get('user_settings', key)
             except configparser.NoOptionError:
                 pass
             if value:
