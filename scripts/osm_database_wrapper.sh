@@ -113,6 +113,26 @@ if [[ "$1" == "transfer_productive" ]]; then
     exit $rc
 fi
 
+if [[ "$1" == "create_complete" ]]; then
+    if [ -f "$lock_file" ]; then
+        echo -e "$(<$lock_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: $1: program busy" "$recipient_mail_address"
+        echo "$(get_timestamp)   $1: program busy: $(<$lock_file)" >> "$log_file"
+        exit 1
+    fi
+    echo "Creation of complete database in progress" > "$lock_file"
+    "$folder_name/create_complete_database.sh" > "$temp_log_file" 2>&1
+    rc=$?
+    if [[ $rc != 0 ]]; then
+        echo -e "$(<$temp_log_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: Creation of complete  OSM database failed" "$recipient_mail_address"
+        echo "$(get_timestamp)  Creation of complete  OSM database failed" >> "$log_file"
+    else
+        echo -e "$(<$temp_log_file)" | mail -aFrom:$sender_mail_address -s "osm database wrapper: Creation of complete  OSM database successful" "$recipient_mail_address"
+        echo "$(get_timestamp)   Creation of complete  OSM database successful" >> "$log_file"
+    fi
+    rm "$lock_file"
+    exit $rc
+fi
+
 echo -e "$1 is no valid option" | mail -aFrom:$sender_mail_address -s "osm database wrapper: invalid option" "$recipient_mail_address"
 echo "$(get_timestamp)   $1 is no valid option" >> "$log_file"
 exit 3
