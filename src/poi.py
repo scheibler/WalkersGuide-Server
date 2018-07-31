@@ -20,11 +20,15 @@ class POI:
 
         # tags, boundary box and search strings
         tags = self.create_tags(tag_list)
+        boundaries = geometry.get_boundary_box(lat, lon, radius)
         if search != "":
-            # if we search for something, choose a 10 km radius
-            boundaries = geometry.get_boundary_box(lat, lon, 10000)
             # prepare search strings
             search = search.replace(" ", "%").lower()
+            # entrances, intersections and crossings
+            search_entrances = "LOWER(label) LIKE '%%%s%%'" % search
+            search_intersections = "LOWER(name) LIKE '%%%s%%'" % search
+            search_pedestrian_crossings = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
+            # poi
             search_poi = "("
             search_poi += "LOWER(tags->'name') LIKE '%%%s%%' or " % search
             search_poi += "LOWER(tags->'amenity') LIKE '%%%s%%' or " % search
@@ -32,13 +36,16 @@ class POI:
             search_poi += "LOWER(tags->'addr:street') LIKE '%%%s%%' or " % search
             search_poi += "LOWER(tags->'street') LIKE '%%%s%%'" % search
             search_poi += ")"
-            search_pedestrian_crossings = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
-            search_other = "LOWER(name) LIKE '%%%s%%'" % search
+            # stations
+            search_stations = "("
+            search_stations += "LOWER(tags->'name') LIKE '%%%s%%'" % search
+            search_stations += ")"
         else:
-            boundaries = geometry.get_boundary_box(lat, lon, radius)
-            search_poi = ""
+            search_entrances = ""
+            search_intersections = ""
             search_pedestrian_crossings = ""
-            search_other = ""
+            search_poi = ""
+            search_stations = ""
 
         # intersections
         if tags['intersection'] != "":
@@ -52,8 +59,8 @@ class POI:
                 # only smaller intersections
                 where_clause += " AND number_of_streets_with_name <= 1"
             # search for something?
-            if search_poi != "":
-                where_clause += " AND %s" % search_other
+            if search_intersections != "":
+                where_clause += " AND %s" % search_intersections
             # query data
             result = DBControl().fetch_data("" \
                     "WITH closest_points AS (" \
@@ -87,8 +94,8 @@ class POI:
             where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f) AND %s" \
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'],
                         boundaries['top'], tags['station'])
-            if search_poi != "":
-                where_clause += " AND %s" % search_poi
+            if search_stations != "":
+                where_clause += " AND %s" % search_stations
             result = DBControl().fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM stations WHERE %s" \
@@ -168,8 +175,8 @@ class POI:
             t1 = time.time()
             where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
-            if search_poi != "":
-                where_clause += " AND %s" % search_other
+            if search_entrances != "":
+                where_clause += " AND %s" % search_entrances
             result = DBControl().fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM entrances WHERE %s" \
@@ -197,7 +204,7 @@ class POI:
             t1 = time.time()
             where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
-            if search_poi != "":
+            if search_pedestrian_crossings != "":
                 where_clause += " AND %s" % search_pedestrian_crossings
             result = DBControl().fetch_data("" \
                     "WITH closest_points AS (" \
@@ -222,10 +229,14 @@ class POI:
                 print "pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
 
         # filter out entries above given radius
+        thrown_away = 0
         filtered_poi_list = []
         for entry in poi_list:
             if entry['distance'] < radius and len(filtered_poi_list) < number_of_results:
                 filtered_poi_list.append(entry)
+            else:
+                thrown_away += 1
+        print(thrown_away)
 
         te = time.time()
         if self.hide_log_messages == False:
@@ -467,15 +478,21 @@ class POI:
         entrance = self.create_way_point(osm_id, lat, lon, tags)
         if entrance == {}:
             return entrance
+        # add entrance label
+        entrance['label'] = entrance_label
+        # parse address
+        address_data = self.extract_address(tags)
+        if address_data:
+            entrance.update(address_data)
+        # name
+        if entrance.get("name") == entrance.get("sub_type"):
+            if entrance.get("display_name"):
+                entrance['name'] = entrance['display_name']
+            else:
+                entrance['name'] = self.translator.translate("entrance", entrance_label)
+        # type and subtype
         entrance['type'] = "entrance"
         entrance['sub_type'] = self.translator.translate("entrance", entrance_label)
-        entrance['label'] = entrance_label
-        # name
-        address = self.extract_address(tags)
-        if address:
-            entrance['name'] = address
-        else:
-            entrance['name'] = entrance['sub_type']
         return entrance
 
 
@@ -537,9 +554,9 @@ class POI:
             return poi
 
         # parse address
-        address = self.extract_address(tags)
-        if address:
-            poi['address'] = address
+        address_data = self.extract_address(tags)
+        if address_data:
+            poi.update(address_data)
 
         # type and subtype
         poi['type'] = "poi"
@@ -578,7 +595,7 @@ class POI:
                 poi['sub_type'] = self.translator.translate("building", "building")
             else:
                 poi['sub_type'] = self.translator.translate("building", tags['building'])
-        elif poi.has_key("address") == True:
+        elif poi.has_key("display_name") == True:
             poi['type'] = "street_address"
             poi['sub_type'] = self.translator.translate("poi", "address")
 
@@ -591,8 +608,8 @@ class POI:
             poi['name'] = tags['operator']
         elif tags.has_key("ref"):
             poi['name'] += " (%s)" % tags['ref']
-        elif poi.has_key("address"):
-            poi['name'] = poi['address']
+        elif poi.has_key("display_name"):
+            poi['name'] = poi['display_name']
         else:
             poi['name'] = poi['sub_type']
 
@@ -735,27 +752,51 @@ class POI:
 
 
     def extract_address(self, tags):
-        address1 = ""
-        if tags.has_key("addr:street") and tags.has_key("addr:housenumber"):
-            address1 += "%s %s" % (tags['addr:street'], tags['addr:housenumber'])
-            if tags.has_key("addr:postcode"):
-                address1 += ", %s" % tags['addr:postcode']
-            if tags.has_key("addr:city"):
-                address1 += " %s" % tags['addr:city']
-        address2 = ""
-        if tags.has_key("street") and tags.has_key("housenumber"):
-            address2 += "%s %s" % (tags['street'], tags['housenumber'])
-            if tags.has_key("postcode"):
-                address2 += ", %s" % tags['postcode']
-            if tags.has_key("city"):
-                address2 += " %s" % tags['city']
-        if address1.__len__() > 0 or address2.__len__() > 0:
-            if address1.__len__() < address2.__len__():
-                return address2
+        addr_dict = {}
+        # street and house number
+        house_number = tags.get("addr:housenumber")
+        if house_number:
+            addr_dict['house_number'] = house_number
+        road = tags.get("addr:street")
+        if road:
+            addr_dict['road'] = road
+        # suburb and district
+        suburb = tags.get("addr:suburb")
+        if suburb:
+            addr_dict['suburb'] = suburb
+        city_district = tags.get("addr:district")
+        if city_district:
+            addr_dict['city_district'] = city_district
+        # postcode, city, state and country
+        postcode = tags.get("addr:postcode")
+        if postcode:
+            addr_dict['postcode'] = postcode
+        city = tags.get("addr:city")
+        if city:
+            addr_dict['city'] = city
+        state = tags.get("addr:state")
+        if state:
+            addr_dict['state'] = state
+        country = tags.get("addr:country")
+        if country:
+            addr_dict['country'] = country
+        # display name
+        if (road and house_number) or (road and city):
+            addr_list = []
+            if road and house_number:
+                if self.translator.language == "de":
+                    addr_list.append("%s %s" % (road, house_number))
+                else:
+                    addr_list.append(house_number)
+                    addr_list.append(road)
             else:
-                return address1
-        else:
-            return ""
+                addr_list.append(road)
+            if postcode:
+                addr_list.append(postcode)
+            if city:
+                addr_list.append(city)
+            addr_dict['display_name'] = ', '.join(addr_list)
+        return addr_dict
 
 
     # function to group poi tags into categories
