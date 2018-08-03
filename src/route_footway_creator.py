@@ -79,6 +79,7 @@ class RouteFootwayCreator:
             self.way_class_weight_list[index] = 100 - weight
         self.route_logger.append_to_log(self.way_class_weight_list, True)
 
+
     def find_footway_route(self, start_point, dest_point):
         print "footway route creator"
         # a few helper variables
@@ -403,6 +404,7 @@ class RouteFootwayCreator:
                 % (t2-t1, t3-t2, t4-t3, t5-t4, t6-t5, t6-t1), True)
         return self.route
 
+
     def follow_this_way(self, start_point, way_id, bearing, add_all_intersections):
         self.route = []
         way = DBControl().fetch_data("SELECT nodes from ways where id = %d" % way_id)[0]
@@ -496,6 +498,7 @@ class RouteFootwayCreator:
                         self.translator.translate("message", "process_canceled"))
         return self.route
 
+
     def get_route_description(self, route):
         route_length = 0
         number_of_intersections = 0
@@ -530,6 +533,7 @@ class RouteFootwayCreator:
         else:
             return self.translator.translate("footway_creator", "route_description_without_transport") \
                     % (route_length, number_of_intersections)
+
 
     def add_point_to_route(self, next_point, next_segment, add_all_intersections=False):
         # calculate distance and bearing of new segment
@@ -610,6 +614,7 @@ class RouteFootwayCreator:
         self.route.append(next_segment)
         self.route.append(next_point)
 
+
     def important_intersection(self, intersection, prev_segment = {}):
         if intersection.has_key("way_list") == False:
             return False
@@ -633,6 +638,7 @@ class RouteFootwayCreator:
         else:
             return tram_or_rail
 
+
     def get_route_segment_sub_points(self, routing_table_id, reverse):
         c_list = DBControl().fetch_data("" \
                 "SELECT ST_Y(geom) AS lat, ST_X(geom) AS lon " \
@@ -654,6 +660,7 @@ class RouteFootwayCreator:
                 last_accepted_bearing = new_bearing
                 point_list.append(self.poi.create_way_point(-1, c_list[i]['lat'], c_list[i]['lon'], {}))
         return point_list
+
 
     def get_nearest_vertex(self, lat, lon):
         start = time.time()

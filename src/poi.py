@@ -14,6 +14,7 @@ class POI:
         self.translator = translator_object
         self.hide_log_messages = hide_log_messages
 
+
     def get_poi(self, lat, lon, radius, number_of_results, tag_list, search=""):
         ts = time.time()
         poi_list = []
@@ -243,6 +244,99 @@ class POI:
             print "gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), poi_list.__len__())
         return filtered_poi_list
 
+
+    def next_intersections_for_way(self, node_id, way_id, next_node_id):
+        # get current way id and tags
+        try:
+            way_id = way_id
+            way_tags = self.parse_hstore_column(
+                    DBControl().fetch_data("SELECT tags from ways where id = %d" % way_id)[0]['tags'])
+        except (IndexError, KeyError) as e:
+            raise POI.POICreationError(
+                    self.translator.translate("message", "way_id_invalid"))
+        # get initial movement direction
+        try:
+            node_id_seq_nr = DBControl().fetch_data(
+                    "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
+                            % (way_id, node_id))[0]['sequence_id']
+            next_node_id_seq_nr = DBControl().fetch_data(
+                    "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
+                            % (way_id, next_node_id))[0]['sequence_id']
+        except (IndexError, KeyError) as e:
+            raise POI.POICreationError(
+                    self.translator.translate("message", "way_id_invalid"))
+        else:
+            print("%d < %d then asc" % (node_id_seq_nr, next_node_id_seq_nr))
+            if node_id_seq_nr < next_node_id_seq_nr:
+                comparison_operator = ">"
+                order_direction = "ASC"
+            else:
+                comparison_operator = "<"
+                order_direction = "DESC"
+
+        # build next node list
+        next_node_id_list = []
+        index = 0
+        while True:
+            index += 1
+            print("...iteration %d" % index)
+            next_node_id_list += DBControl().fetch_data(
+                    "select node_id from way_nodes " \
+                    "WHERE way_id = %d AND sequence_id %s %d ORDER BY sequence_id %s" \
+                    % (way_id, comparison_operator, node_id_seq_nr, order_direction))
+            # set on the start of the next potential way
+            node_id = next_node_id_list[-1]['node_id']
+            print("udated node id: %d" % node_id)
+            potential_next_way_list = []
+            for potential_next_way in DBControl().fetch_data(
+                    "SELECT wn.sequence_id AS sequence_id, w.id AS way_id, w.tags AS way_tags " \
+                    "FROM way_nodes wn JOIN ways w ON wn.way_id = w.id " \
+                    "WHERE wn.node_id = %d AND wn.way_id != %d" % (node_id, way_id)):
+                potential_next_way_tags = self.parse_hstore_column(potential_next_way['way_tags'])
+                if potential_next_way_tags.get("name") \
+                        and potential_next_way_tags.get("name") == way_tags.get("name"):
+                    potential_next_way_list.append(potential_next_way)
+                    print("match name: %s" % potential_next_way)
+                elif potential_next_way_tags.get("surface") \
+                        and potential_next_way_tags.get("surface") == way_tags.get("surface") \
+                        and potential_next_way_tags.get("tracktype") \
+                        and potential_next_way_tags.get("tracktype") == way_tags.get("tracktype"):
+                    potential_next_way_list.append(potential_next_way)
+                    print("match surface and tracktype: %s" % potential_next_way)
+                elif potential_next_way_tags.get("surface") \
+                        and potential_next_way_tags.get("surface") == way_tags.get("surface") \
+                        and potential_next_way_tags.get("smoothness") \
+                        and potential_next_way_tags.get("smoothness") == way_tags.get("smoothness"):
+                    potential_next_way_list.append(potential_next_way)
+                    print("match surface and smoothness: %s" % potential_next_way)
+            if len(potential_next_way_list) == 1:
+                way_id = potential_next_way_list[0]['way_id']
+                way_tags = self.parse_hstore_column(
+                        potential_next_way_list[0]['way_tags'])
+                # comparison and order direction
+                node_id_seq_nr = potential_next_way_list[0]['sequence_id']
+                print("updated way id: %d,    seq: %d" % (way_id, node_id_seq_nr))
+                if node_id_seq_nr == 0:
+                    comparison_operator = ">"
+                    order_direction = "ASC"
+                else:
+                    comparison_operator = "<"
+                    order_direction = "DESC"
+            else:
+                break
+
+        # create point objects and return
+        next_node_list = []
+        for next_node_id in next_node_id_list:
+            next_node = self.create_intersection_by_id(
+                    next_node_id.get("node_id"))
+            if not next_node:
+                next_node = self.create_way_point_by_id(
+                        next_node_id.get("node_id"))
+            next_node_list.append(next_node)
+        return next_node_list
+
+
     #####
     # create the poi objects
     #####
@@ -328,9 +422,16 @@ class POI:
         else:
             segment['name'] = segment['sub_type']
         # optional attributes
+        if tags.has_key("description"):
+            segment['description'] = tags['description']
         if tags.has_key("lanes"):
             try:
                 segment['lanes'] = int(tags['lanes'])
+            except ValueError as e:
+                pass
+        if tags.has_key("maxspeed"):
+            try:
+                segment['maxspeed'] = int(tags['maxspeed'])
             except ValueError as e:
                 pass
         segment['pois'] = []
@@ -354,6 +455,8 @@ class POI:
                     segment['sidewalk'] = 1
             elif tags['sidewalk'] == "both":
                 segment['sidewalk'] = 3
+        if tags.has_key("smoothness"):
+            segment['smoothness'] = self.translator.translate("smoothness", tags['smoothness'])
         if tags.has_key("surface"):
             segment['surface'] = self.translator.translate("surface", tags['surface'])
         if tags.has_key("tactile_paving"):
@@ -451,6 +554,7 @@ class POI:
                     street['way_id'],
                     self.parse_hstore_column(street['way_tags']),
                     street['direction'] == "B")
+            sub_segment['next_node_id'] = street['node_id']
             sub_segment['type'] = "footway_intersection"
             sub_segment['intersection_name'] = intersection['name']
             sub_segment['bearing'] = geometry.bearing_between_two_points(
@@ -1004,4 +1108,8 @@ class POI:
             if inserted == False:
                 poi_list.append(entry)
         return poi_list
+
+
+    class POICreationError(LookupError):
+        """ is called, when the creation of the next intersection list failed """
 

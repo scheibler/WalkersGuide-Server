@@ -150,6 +150,68 @@ class RoutingWebService():
 
 
     @cherrypy.tools.json_in()
+    def get_next_intersections_for_way(self):
+        # set gzip header
+        cherrypy.response.headers['Content-Type'] = 'application/gzip'
+        # create the return tuple
+        return_tuple = {}
+        return_tuple['next_intersections'] = []
+        return_tuple['warning'] = ""
+        return_tuple['error'] = ""
+        translator = Translator(Config().get_param("default_language"))
+        # parse json encoded input
+        input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+
+        # user language
+        language = Config().get_param("default_language")
+        if input.has_key("language"):
+            if input['language'] == "de":
+                language = input['language']
+        # initialize the translator object with the user's choosen language
+        translator = Translator(language)
+
+        # node_id, way_id and next_node_id
+        if not input.get("node_id"):
+            return_tuple['error'] = translator.translate("message", "no_node_id")
+        if not input.get("way_id"):
+            return_tuple['error'] = translator.translate("message", "no_way_id")
+        if not input.get("next_node_id"):
+            return_tuple['error'] = translator.translate("message", "no_next_node_id")
+
+        # create session id
+        if input.has_key("session_id") == False:
+            return_tuple['error'] = translator.translate("message", "no_session_id_option")
+            return helper.zip_data(return_tuple)
+        session_id = input['session_id']
+        # try to cancel prior request, if necessary
+        if Config().clean_old_session(session_id) == False:
+            return_tuple['error'] = translator.translate("message", "old_request_still_running")
+            return helper.zip_data(return_tuple)
+        # this code is onley reached, if the prior session was canceled successfully
+        if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
+            return_tuple['error'] = translator.translate("message", "server_busy")
+            return helper.zip_data(return_tuple)
+        Config().add_session_id(session_id)
+
+        print("Next Intersections for node_id:%d, way_id:%d, next_node_id: %d" \
+                % (input.get("node_id"), input.get("way_id"), input.get("next_node_id")))
+        poi = POI(session_id, translator)
+        try:
+            next_intersection_list = poi.next_intersections_for_way(
+                input.get("node_id"), input.get("way_id"), input.get("next_node_id"))
+        except POI.POICreationError as e:
+            Config().confirm_removement_of_session_id(session_id)
+            return_tuple['next_intersections'] = []
+            return_tuple['error'] = "%s" % e
+            return helper.zip_data(return_tuple)
+        # convert return_tuple to json and zip it, before returning
+        return_tuple['next_intersections'] = next_intersection_list
+        Config().confirm_removement_of_session_id(session_id)
+        return helper.zip_data(return_tuple)
+    get_next_intersections_for_way.exposed = True
+
+
+    @cherrypy.tools.json_in()
     def get_poi(self):
         # set gzip header
         cherrypy.response.headers['Content-Type'] = 'application/gzip'

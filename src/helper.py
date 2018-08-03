@@ -18,12 +18,14 @@ def convert_dict_values_to_utf8(input):
     else:
         return input
 
+
 def zip_data(data):
     json_string = json.dumps(data, encoding="utf-8")
     out = StringIO.StringIO()
     with gzip.GzipFile(fileobj=out, mode="w") as f:
         f.write(json_string)
     return out.getvalue()
+
 
 def send_email(subject, body):
     msg = MIMEText(body, 'plain', 'utf-8')

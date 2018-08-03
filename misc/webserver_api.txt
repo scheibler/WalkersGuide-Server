@@ -26,6 +26,17 @@ get_route():
     * route: List<Point,Segment,Point,...>
     + error: String
 
+get_next_intersections_for_way():
+* input: json via post
+    * session_id: String
+    * node_id: Long
+    * way_id: Long
+    * next_node_id: Long
+    + language: String      ["de", "en"]
+* output: gzipped json
+    * next_intersections: List<Point>
+    + error: String
+
 get_poi():
 * input: json via post
     * session_id: String

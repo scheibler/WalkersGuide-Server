@@ -30,7 +30,8 @@ class Translator:
             if tag == "start_point_no_longitude": return "Dem übermittelten Startpunkt fehlt der Längengrad"
             if tag == "start_point_no_type": return "Dem übermittelten Startpunkt fehlt der Typ"
             if tag == "no_way_id": return "Keine Weg-Id übermittelt"
-            if tag == "no_bearing_value": return "Kein Richtungs-wert übermittelt"
+            if tag == "no_node_id": return "Keine Node-Id übermittelt"
+            if tag == "no_next_node_id": return "Keine Next-Node-Id übermittelt"
             if tag == "way_id_invalid": return "Die übermittelte Weg-Id ist ungültig"
             if tag == "source_route_no_transport_parts": return "Der Route fehlt ein, per ÖPNV zurückzulegender Routenabschnitt"
             if tag == "source_route_multiple_transport_parts": return "Die Route beinhaltet mehr als einen, per ÖPNV zurückzulegenden Routenabschnitt"
@@ -85,6 +86,16 @@ class Translator:
         if category == "poi":
             if tag == "address": return "Adresse"
             if tag == "way_point": return "Wegpunkt"
+
+        if category == "smoothness":
+            if tag == "excellent": return "Sehr gut"
+            if tag == "good": return "Gut"
+            if tag == "intermediate": return "Mittelmäßig"
+            if tag == "bad": return "Schlecht"
+            if tag == "very_bad": return "Schlecht"
+            if tag == "horrible": return "Sehr schlecht"
+            if tag == "very_horrible": return "Sehr schlecht"
+            if tag == "impassable": return "Für Fahrzeuge unpassierbar"
 
         if category == "surface":
             if tag == "unpaved": return "Unbefestigt"
@@ -629,7 +640,8 @@ class Translator:
             if tag == "start_point_no_longitude": return "The longitude value of the start point is missing"
             if tag == "start_point_no_type": return "The type value of the start point is missing"
             if tag == "no_way_id": return "No Way-Id transmitted"
-            if tag == "no_bearing_value": return "No bearing value transmitted"
+            if tag == "no_node_id": return "No node id transmitted"
+            if tag == "no_next_node_id": return "No next node id transmitted"
             if tag == "way_id_invalid": return "The transmitted Way-Id is invalid"
             if tag == "source_route_no_transport_parts": return "The transmitted route lacks a public transport segment"
             if tag == "source_route_multiple_transport_parts": return "The transmitted route consists of multiple public transport segments"
@@ -684,6 +696,16 @@ class Translator:
         if category == "poi":
             if tag == "address": return "Address"
             if tag == "way_point": return "Waypoint"
+
+        if category == "smoothness":
+            if tag == "excellent": return "Excellent"
+            if tag == "good": return "Good"
+            if tag == "intermediate": return "Intermediate"
+            if tag == "bad": return "Bad"
+            if tag == "very_bad": return "Bad"
+            if tag == "horrible": return "Very bad"
+            if tag == "very_horrible": return "Very bad"
+            if tag == "impassable": return "Impassable for wheeled vehicles"
 
         if category == "surface":
             if tag == "unpaved": return "unpaved"

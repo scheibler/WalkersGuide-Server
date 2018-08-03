@@ -36,10 +36,6 @@ intersection:                   extends from point
 + number_of_streets_with_name:  Integer                     number of big streets
                                 [number_of_streets_with_name >= 0, default: unknown = -1]
 
-entrance:                       extends from point
-* type:                         "entrance"
-+ label:                        String          entrance type (main, emergency, ect.)
-
 GPS:                            extends from point
 * type:                         "gps"
 + accuracy:                     Float
@@ -57,20 +53,37 @@ pedestrian_crossing:            extends from point
 + traffic_signals_vibration:    Integer         tactile signal for traffic signals
                                 [0 = no, 1 = yes, default: unknown = -1]
 
-Poi:                            extends from point
+point_with_address_data:                  extends from point
++ display_name                  String
++ extra_name                    String
++ house_number:                 String
++ road:                         String
++ residential                   String
++ suburb                        String
++ city_district                 String
++ postcode                      String
++ city                          String
++ state                         String
++ country                       String
++ country_code                  String
+
+entrance:                       extends from point_with_address_data
+* type:                         "entrance"
++ label:                        String          entrance type (main, emergency, ect.)
+
+StreetAddress:                  extends from point_with_address_data
+* type:                         "street_address"
+
+Poi:                            extends from point_with_address_data
 * type:                         "poi"
 + entrance_list:                list<entrance>  list of entrances into this poi
 + is_inside:                    poi             poi is inside another building
-+ address:                      String
 + email:                        String
 + phone:                        String
 + opening_hours:                String
 + website:                      String
 
-StreetAddress:                  extends from point
-* type:                         "street_address"
-
-station:                        extends from point
+station:                        extends from poi
 * type:                         "station"
 + lines:                        list<line>      list of lines for this station
 + vehicles:                     list<string>    list of vehicles for this station
@@ -101,13 +114,17 @@ footway:                        extends from segment
 * type:                     "footway"
 * bearing:          Integer         Bearing of the way segment
                     [0 <= bearing <= 359, default: unknown = -1]
++ description:              String          Additional description
 + lanes:                    Integer         number of street lanes
                                 [lanes >= 0, default: unknown = -1]
++ maxspeed:                 Integer         Maximal speed in km/h
+                                [maxspeed >= 0, default: unknown = -1]
 + pois:                     List<Point>     List of points (e. x. intersections along the way)
 + segregated:               Integer         shared ways like footway/cycleway use different lanes
                                 [0 = no, 1 = yes, default: -1 = unknown]
 + sidewalk:                 Integer         street contains sidewalk
                                 [0 = no, 1 = left, 2 = right, 3 = both, default: -1 = unknown]
++ smoothness:               String
 + surface:                  String
 + tactile_paving:           Integer         tactile markings for white cane users
                                 [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
@@ -123,6 +140,8 @@ footway:                        extends from segment
 intersection_segment:           extends from footway
 * type:                     "footway_intersection"
 * intersection_name:        String
++ next_node_id:             Long            Next node id from osm database
+                                [next_node_id >= 0, default: unknown = -1]
 
 route_segment:                  extends from footway
 * type:                     "footway_route"
