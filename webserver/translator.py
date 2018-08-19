@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import textwrap
+from config import Config
 
 class Translator:
 
-    def __init__(self, language):
+    def __init__(self, language=Config().default_language):
         self.language = language
 
     def translate(self, category, tag):
@@ -41,6 +42,7 @@ class Translator:
             if tag == "no_longitude_value": return "Kein Längengrad übermittelt"
             if tag == "no_range_value": return "Kein Wert für den Umkreis übermittelt"
             if tag == "no_tags_value": return "Keine POI Tags übermittelt"
+            if tag == "no_public_transport_provider": return "Kein ÖPNV Anbieter übermittelt"
             if tag == "no_address_for_this_coordinates": return "Für die übergebenen Koordinaten konnte keine Adresse ermittelt werden"
             if tag == "no_station_for_this_coordinates": return "Die Haltestelle konnte nicht ermittelt werden"
             if tag == "bahn_server_down": return "Der Server der Deutschen Bahn ist nicht erreichbar"
@@ -651,6 +653,7 @@ class Translator:
             if tag == "no_longitude_value": return "The longitude value is missing"
             if tag == "no_range_value": return "The radius value is missing"
             if tag == "no_tags_value": return "The poi tags are missing"
+            if tag == "no_public_transport_provider": return "The public transport provider is missing"
             if tag == "no_address_for_this_coordinates": return "Found no address for the given coordinates"
             if tag == "no_station_for_this_coordinates": return "Found no station for this coordinates"
             if tag == "bahn_server_down": return "The server of the Deutsche Bahn is not accessible"

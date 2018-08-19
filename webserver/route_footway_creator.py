@@ -1,9 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from route_logger import RouteLogger
-from db_control import DBControl
-from translator import Translator
 from config import Config
 from poi import POI
 import geometry
@@ -11,19 +8,20 @@ import time, json, operator, re, math
 
 class RouteFootwayCreator:
 
-    def __init__(self, session_id, route_logger_object, translator_object,
+    def __init__(self, db, session_id, route_logger_object, translator_object,
             indirection_factor, allowed_way_classes, blocked_ways):
+        self.selected_db = db
         self.session_id = session_id
         self.route_logger = route_logger_object
         self.translator = translator_object
 
         # routing parameters
         self.route = []
-        self.routing_table_name = Config().get_param("routing_table")
+        self.routing_table_name = Config().database.get("routing_table")
         self.temp_routing_table_name = "tmp_routing_%s" \
                 % re.sub(r'[^a-zA-Z0-9]', '', self.session_id)
-        self.intersections_table_name = Config().get_param("intersection_table")
-        self.poi = POI(session_id, translator_object)
+        self.intersections_table_name = Config().database.get("intersection_table")
+        self.poi = POI(db, session_id, translator_object)
         self.minimum_radius = 750
         self.blocked_ways = blocked_ways
 
@@ -44,8 +42,8 @@ class RouteFootwayCreator:
         #   2 = neutral way
         #   3 = bad way
         #   4 = impassable way
-        weight_list = DBControl().fetch_data("SELECT %s as weight \
-                    from way_class_weights;" % factor_column_name)
+        weight_list = self.selected_db.fetch_data("SELECT %s as weight from %s;" \
+                % (factor_column_name, Config().database.get("way_class_weights")))
         # way classes: find them in the kmh column of the routing table
         #   wcw_id 1 -- list index 0 = class 1: big, middle and unknown streets
         #   wcw_id 0 -- list index 1 = class 2: small streets
@@ -103,7 +101,7 @@ class RouteFootwayCreator:
         boundaries = geometry.get_boundary_box(center_point['lat'], center_point['lon'],
                 self.minimum_radius + int(distance_between_start_and_destination / 2))
         # create temp table
-        DBControl().send_data("" \
+        self.selected_db.send_data("" \
                 "DROP TABLE IF EXISTS %s;" \
                 "CREATE TABLE %s AS SELECT * FROM %s LIMIT 0;" \
                 "INSERT INTO %s " \
@@ -114,10 +112,10 @@ class RouteFootwayCreator:
                     self.routing_table_name, boundaries['left'], boundaries['bottom'],
                     boundaries['right'], boundaries['top']))
         # check if temp routing table is empty
-        number_of_table_rows = DBControl().fetch_data("SELECT count(*) from %s" \
+        number_of_table_rows = self.selected_db.fetch_data("SELECT count(*) from %s" \
                 % self.temp_routing_table_name)[0]['count']
         if number_of_table_rows == 0:
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             self.route_logger.append_to_log("Routing table too small", True)
             raise RouteFootwayCreator.FootwayRouteCreationError(
                 self.translator.translate("footway_creator", "foot_route_creation_failed"))
@@ -125,16 +123,16 @@ class RouteFootwayCreator:
         t11 = time.time()
         # weight list
         for index, weight in enumerate(self.way_class_weight_list):
-            DBControl().send_data("" \
+            self.selected_db.send_data("" \
                     "UPDATE %s SET cost=km*%d where kmh = %d;" \
                     % (self.temp_routing_table_name, weight, (index+1)) )
         # blocked ways
-        DBControl().send_data("" \
+        self.selected_db.send_data("" \
                 "UPDATE %s SET cost=km*(-1) WHERE osm_id = ANY('{%s}');" \
                 % (self.temp_routing_table_name, ','.join(str(x) for x in self.blocked_ways)) )
         # add table index and recreate source and target columns
         t12 = time.time()
-        DBControl().send_data("" \
+        self.selected_db.send_data("" \
                 "ALTER TABLE ONLY %s ADD CONSTRAINT pkey_%s PRIMARY KEY (id);" \
                 "CREATE INDEX idx_%s_source ON %s USING btree (source);" \
                 "CREATE INDEX idx_%s_target ON %s USING btree (target);" \
@@ -157,14 +155,14 @@ class RouteFootwayCreator:
                 % (t2-t1, t11-t1, t12-t11, t2-t12, number_of_table_rows), True)
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             raise RouteFootwayCreator.FootwayRouteCreationError(
                     self.translator.translate("message", "process_canceled"))
 
         # get start and destination vertex
         start_vertex_list = self.get_nearest_vertex( start_point['lat'], start_point['lon'])
         if start_vertex_list.__len__() == 0 or Config().has_session_id_to_remove(self.session_id):
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             if start_vertex_list.__len__() == 0:
                 self.route_logger.append_to_log("Found no start vertex", True)
                 raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -174,7 +172,7 @@ class RouteFootwayCreator:
                         self.translator.translate("message", "process_canceled"))
         dest_vertex_list = self.get_nearest_vertex( dest_point['lat'], dest_point['lon'])
         if dest_vertex_list.__len__() == 0 or Config().has_session_id_to_remove(self.session_id):
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             if dest_vertex_list.__len__():
                 self.route_logger.append_to_log("Found no destination vertex", True)
                 raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -185,7 +183,7 @@ class RouteFootwayCreator:
         t3 = time.time()
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             raise RouteFootwayCreator.FootwayRouteCreationError(
                     self.translator.translate("message", "process_canceled"))
 
@@ -199,7 +197,7 @@ class RouteFootwayCreator:
             for y in range(0, x+1):
                 if x < start_vertex_list.__len__() and y < dest_vertex_list.__len__() \
                         and best_route.cost == 1000000:
-                    result = DBControl().fetch_data("" \
+                    result = self.selected_db.fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
@@ -211,7 +209,7 @@ class RouteFootwayCreator:
                                     start_vertex_list[x].__str__(), dest_vertex_list[y].__str__()), True)
                 if y < start_vertex_list.__len__() and x < dest_vertex_list.__len__() \
                         and x != y and best_route.cost == 1000000:
-                    result = DBControl().fetch_data("" \
+                    result = self.selected_db.fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, cost from %s', %d, %d, false, false)" \
                             % (self.temp_routing_table_name,
@@ -222,16 +220,16 @@ class RouteFootwayCreator:
                                 "%d  %d    Cost: %.2f\n    start: %s\n    dest: %s" % (y, x, best_route.cost,
                                     start_vertex_list[y].__str__(), dest_vertex_list[x].__str__()), True)
         if Config().has_session_id_to_remove(self.session_id):
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             raise RouteFootwayCreator.FootwayRouteCreationError(
                     self.translator.translate("message", "process_canceled"))
         if best_route.cost == 1000000:
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                         "'select id, source, target, km AS cost from %s WHERE kmh != 7', %d, %d, false, false)" \
                     % (self.temp_routing_table_name,
                         start_vertex_list[0].point_id, dest_vertex_list[0].point_id))
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             if any(result):
                 raise RouteFootwayCreator.FootwayRouteCreationError(
                         self.translator.translate("footway_creator", "foot_route_creation_failed_way_classes_missing"))
@@ -244,7 +242,7 @@ class RouteFootwayCreator:
         for r in best_route.route:
             if r['edge_id'] == -1:
                 continue
-            part = DBControl().fetch_data("SELECT * from %s where id=%d" \
+            part = self.selected_db.fetch_data("SELECT * from %s where id=%d" \
                     % (self.temp_routing_table_name, r['edge_id']))[0]
 
             # exception for the first route segment
@@ -294,7 +292,7 @@ class RouteFootwayCreator:
 
         # if no route was found, just use the direct connection between start and destination
         if len(self.route) < 3:
-            DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+            self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
             beeline_route = []
             beeline_route.append(start_point)
             beeline_route.append(
@@ -393,7 +391,7 @@ class RouteFootwayCreator:
         t6 = time.time()
 
         # print time overview
-        DBControl().send_data("DROP TABLE %s;" % self.temp_routing_table_name)
+        self.selected_db.send_data("DROP TABLE %s;" % self.temp_routing_table_name)
         self.route_logger.append_to_log(
                 "1. temp table: %.2f\n" \
                 "2. vertex calculation: %.2f\n" \
@@ -407,7 +405,7 @@ class RouteFootwayCreator:
 
     def follow_this_way(self, start_point, way_id, bearing, add_all_intersections):
         self.route = []
-        way = DBControl().fetch_data("SELECT nodes from ways where id = %d" % way_id)[0]
+        way = self.selected_db.fetch_data("SELECT nodes from ways where id = %d" % way_id)[0]
         # check for cancel command
         if Config().has_session_id_to_remove(self.session_id):
             raise RouteFootwayCreator.FootwayRouteCreationError(
@@ -417,18 +415,18 @@ class RouteFootwayCreator:
         id_index = 0
         i = 0
         for id in way['nodes']:
-            wp = DBControl().fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % id)[0]
+            wp = self.selected_db.fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % id)[0]
             dist = geometry.distance_between_two_points(start_point['lat'], start_point['lon'], wp['lat'], wp['lon'])
             if dist < min_dist:
                 min_dist = dist
                 id_index = i
             i += 1
         if id_index == 0:
-            prev = DBControl().fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index])[0]
-            next = DBControl().fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index+1])[0]
+            prev = self.selected_db.fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index])[0]
+            next = self.selected_db.fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index+1])[0]
         else:
-            prev = DBControl().fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index-1])[0]
-            next = DBControl().fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index])[0]
+            prev = self.selected_db.fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index-1])[0]
+            next = self.selected_db.fetch_data("SELECT  ST_y(geom) as lat, ST_X(geom) as lon from nodes where id = %d" % way['nodes'][id_index])[0]
         bearing_difference = geometry.bearing_between_two_points(prev['lat'], prev['lon'], next['lat'], next['lon']) - bearing
         if bearing_difference < 0:
             bearing_difference += 360
@@ -456,7 +454,7 @@ class RouteFootwayCreator:
         last_way_properties = self.poi.create_way_segment_by_id(way_id)
         while True:
             found_next_part = False
-            result = DBControl().fetch_data("SELECT  w.id, w.nodes \
+            result = self.selected_db.fetch_data("SELECT  w.id, w.nodes \
                     from ways w join way_nodes wn on w.id = wn.way_id \
                     where wn.node_id = %d and wn.way_id != %d"
                     % (last_node_id, last_way_properties['way_id']))
@@ -640,7 +638,7 @@ class RouteFootwayCreator:
 
 
     def get_route_segment_sub_points(self, routing_table_id, reverse):
-        c_list = DBControl().fetch_data("" \
+        c_list = self.selected_db.fetch_data("" \
                 "SELECT ST_Y(geom) AS lat, ST_X(geom) AS lon " \
                 "FROM (" \
                     "SELECT ST_PointN(geom_way, generate_series(1, ST_NPoints(geom_way))) AS geom " \
@@ -666,7 +664,7 @@ class RouteFootwayCreator:
         start = time.time()
         # get vertex of nearest big street or -1 if noone is available
         try:
-            big_street_vertex = DBControl().fetch_data("" \
+            big_street_vertex = self.selected_db.fetch_data("" \
                 "SELECT source from %s " \
                         "WHERE kmh = ANY('{1,2}') AND osm_name != ''" \
                     "order by ST_DISTANCE(geom_way::geography, 'POINT(%f %f)'::geography) " \
@@ -677,7 +675,7 @@ class RouteFootwayCreator:
         t1 = time.time()
 
         # get closest way segments
-        nearest_lines = DBControl().fetch_data("\
+        nearest_lines = self.selected_db.fetch_data("\
                 SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                     ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
                     from %s WHERE kmh != 7 AND get_bit(flags::bit(16), 5) = 0 \
@@ -686,7 +684,7 @@ class RouteFootwayCreator:
         # try to prefer railways if the user must cross them to reach destination
         if big_street_vertex > -1:
             try:
-                nearest_railway = DBControl().fetch_data("\
+                nearest_railway = self.selected_db.fetch_data("\
                         SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                             ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
                             from %s \
@@ -707,7 +705,7 @@ class RouteFootwayCreator:
                     nearest_lon = nearest_lines[0]['x2']
                 # test for impassable railway, if exists, add priviously found way, else
                 # catch IndexError exception
-                nearest_intersecting = DBControl().fetch_data("\
+                nearest_intersecting = self.selected_db.fetch_data("\
                         SELECT * FROM %s \
                         WHERE (clazz = 18 OR clazz = 19)AND osm_id != %d \
                             AND ST_Intersects(geom_way, \
@@ -719,7 +717,7 @@ class RouteFootwayCreator:
                 pass
         # try to prefer streets with a max distance of 10 meters
         try:
-            nearest_street = DBControl().fetch_data("\
+            nearest_street = self.selected_db.fetch_data("\
                     SELECT id, osm_id, osm_name, osm_source_id, osm_target_id, source, target, kmh as type, x1, y1, x2, y2, \
                         ST_Distance(geom_way::geography, 'POINT(%f %f)'::geography) as way_distance \
                         from %s \
@@ -760,7 +758,7 @@ class RouteFootwayCreator:
                 if big_street_vertex == -1:
                     tuple_list.append(tuple)
                 else:
-                    raw_route = DBControl().fetch_data("" \
+                    raw_route = self.selected_db.fetch_data("" \
                             "SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(" \
                                 "'select id, source, target, km as cost from %s WHERE kmh != 7', %d, %d, false, false)" \
                             % (self.temp_routing_table_name, tuple.point_id, big_street_vertex))

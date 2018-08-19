@@ -1,0 +1,31 @@
+[general]
+server_name = "WalkersGuide"
+debug = no
+status_email = status@example.com
+support_email = support@example.com
+
+[database]
+host_name = 127.0.0.1
+port = 5432
+user = USER
+password = PASSWORD
+
+[webserver]
+host_name = 127.0.0.1
+port = 34567
+thread_pool = 10
+
+[java]
+gateway_port = 34568
+ram = 16G
+
+[maps]
+[[germany]]
+# name and description
+name = Germany
+description = Map of Germany
+# url or list of urls devided by ;
+urls = https://download.geofabrik.de/europe/germany-latest.osm.pbf
+# optional parameters
+development = no
+

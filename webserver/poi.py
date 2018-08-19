@@ -1,15 +1,14 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from db_control import DBControl
-from translator import Translator
 from config import Config
 import geometry
 import math, time
 
 class POI:
 
-    def __init__(self, session_id, translator_object, hide_log_messages=False):
+    def __init__(self, db, session_id, translator_object, hide_log_messages=False):
+        self.selected_db = db
         self.session_id = session_id
         self.translator = translator_object
         self.hide_log_messages = hide_log_messages
@@ -63,7 +62,7 @@ class POI:
             if search_intersections != "":
                 where_clause += " AND %s" % search_intersections
             # query data
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM %s WHERE %s" \
                     ")" \
@@ -72,7 +71,7 @@ class POI:
                         "FROM closest_points " \
                         "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
                         "LIMIT %d" \
-                    % (Config().get_param("intersection_table"), where_clause,
+                    % (Config().database.get("intersection_table"), where_clause,
                         lon, lat, number_of_results))
             t2 = time.time()
             for row in result:
@@ -97,7 +96,7 @@ class POI:
                         boundaries['top'], tags['station'])
             if search_stations != "":
                 where_clause += " AND %s" % search_stations
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM stations WHERE %s" \
                     ")" \
@@ -118,7 +117,7 @@ class POI:
                     continue
                 if "public_transport" not in station_tags:
                     # legacy mode for stations without stop_position
-                    existance_check = DBControl().fetch_data("" \
+                    existance_check = self.selected_db.fetch_data("" \
                             "SELECT exists(SELECT 1 FROM stations WHERE %s " \
                                 "and tags->'name' = '%s' and tags ? 'public_transport') as exists" \
                             % (where_clause, station_tags['name']))[0]
@@ -145,7 +144,7 @@ class POI:
                         boundaries['top'], tags['poi'])
             if search_poi != "":
                 where_clause += " AND %s" % search_poi
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM poi WHERE %s" \
                     ")" \
@@ -178,7 +177,7 @@ class POI:
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
             if search_entrances != "":
                 where_clause += " AND %s" % search_entrances
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM entrances WHERE %s" \
                     ")" \
@@ -207,7 +206,7 @@ class POI:
                     % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
             if search_pedestrian_crossings != "":
                 where_clause += " AND %s" % search_pedestrian_crossings
-            result = DBControl().fetch_data("" \
+            result = self.selected_db.fetch_data("" \
                     "WITH closest_points AS (" \
                         "SELECT * FROM pedestrian_crossings WHERE %s" \
                     ")" \
@@ -250,16 +249,16 @@ class POI:
         try:
             way_id = way_id
             way_tags = self.parse_hstore_column(
-                    DBControl().fetch_data("SELECT tags from ways where id = %d" % way_id)[0]['tags'])
+                    self.selected_db.fetch_data("SELECT tags from ways where id = %d" % way_id)[0]['tags'])
         except (IndexError, KeyError) as e:
             raise POI.POICreationError(
                     self.translator.translate("message", "way_id_invalid"))
         # get initial movement direction
         try:
-            node_id_seq_nr = DBControl().fetch_data(
+            node_id_seq_nr = self.selected_db.fetch_data(
                     "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
                             % (way_id, node_id))[0]['sequence_id']
-            next_node_id_seq_nr = DBControl().fetch_data(
+            next_node_id_seq_nr = self.selected_db.fetch_data(
                     "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
                             % (way_id, next_node_id))[0]['sequence_id']
         except (IndexError, KeyError) as e:
@@ -280,7 +279,7 @@ class POI:
         while True:
             index += 1
             print("...iteration %d" % index)
-            next_node_id_list += DBControl().fetch_data(
+            next_node_id_list += self.selected_db.fetch_data(
                     "select node_id from way_nodes " \
                     "WHERE way_id = %d AND sequence_id %s %d ORDER BY sequence_id %s" \
                     % (way_id, comparison_operator, node_id_seq_nr, order_direction))
@@ -288,7 +287,7 @@ class POI:
             node_id = next_node_id_list[-1]['node_id']
             print("udated node id: %d" % node_id)
             potential_next_way_list = []
-            for potential_next_way in DBControl().fetch_data(
+            for potential_next_way in self.selected_db.fetch_data(
                     "SELECT wn.sequence_id AS sequence_id, w.id AS way_id, w.tags AS way_tags " \
                     "FROM way_nodes wn JOIN ways w ON wn.way_id = w.id " \
                     "WHERE wn.node_id = %d AND wn.way_id != %d" % (node_id, way_id)):
@@ -343,7 +342,7 @@ class POI:
 
     def create_way_point_by_id(self, osm_node_id):
         try:
-            result = DBControl().fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
+            result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
                     from nodes where id = %d" % osm_node_id)[0]
         except IndexError as e:
             return {}
@@ -387,7 +386,7 @@ class POI:
 
     def create_way_segment_by_id(self, osm_way_id, walking_reverse=False):
         try:
-            result = DBControl().fetch_data("SELECT tags \
+            result = self.selected_db.fetch_data("SELECT tags \
                     from ways where id = %d" % osm_way_id)[0]
         except IndexError as e:
             return {}
@@ -483,9 +482,9 @@ class POI:
         return segment
 
     def create_intersection_by_id(self, osm_id):
-        intersection_table = Config().get_param("intersection_table")
+        intersection_table = Config().database.get("intersection_table")
         try:
-            result = DBControl().fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, name, tags, \
+            result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, name, tags, \
                     number_of_streets, number_of_streets_with_name, number_of_traffic_signals \
                     from %s where id = %d" % (intersection_table, osm_id))[0]
         except IndexError as e:
@@ -501,8 +500,8 @@ class POI:
         return self.create_intersection(osm_id, lat, lon, name, tags, number_of_streets, number_of_streets_with_name, number_of_traffic_signals)
 
     def create_intersection(self, osm_id, lat, lon, name, tags, number_of_streets, number_of_streets_with_name, number_of_traffic_signals):
-        intersection_table = Config().get_param("intersection_table")
-        intersection_table_data = Config().get_param("intersection_data_table")
+        intersection_table = Config().database.get("intersection_table")
+        intersection_table_data = Config().database.get("intersection_data_table")
         intersection = {}
         if type(osm_id) is not int \
                 or type(lat) is not float \
@@ -545,7 +544,7 @@ class POI:
 
         # ways
         intersection['way_list'] = []
-        result = DBControl().fetch_data("\
+        result = self.selected_db.fetch_data("\
                 SELECT way_id, node_id, direction, way_tags, node_tags, \
                     ST_X(geom) as lon, ST_Y(geom) as lat \
                 from %s where id = %d" % (intersection_table_data, osm_id))
@@ -564,7 +563,7 @@ class POI:
         # crossings
         intersection['pedestrian_crossing_list'] = []
         if number_of_traffic_signals > 0:
-            result = DBControl().fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
+            result = self.selected_db.fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
                     from pedestrian_crossings where intersection_id = %d" % osm_id)
             for row in result:
                 signal = self.create_pedestrian_crossing(int(row['id']), row['lat'], row['lon'],
@@ -737,7 +736,7 @@ class POI:
         poi['is_inside'] = {}
         if outer_building_id > 0:
             try:
-                result = DBControl().fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
+                result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
                         from outer_buildings where id = %d" % outer_building_id)[0]
                 lat = result['y']
                 lon = result['x']
@@ -749,7 +748,7 @@ class POI:
         # entrances
         poi['entrance_list'] = []
         if number_of_entrances > 0:
-            result = DBControl().fetch_data("SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags \
+            result = self.selected_db.fetch_data("SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags \
                     from entrances where poi_id = %d ORDER BY class" % poi_id)
             for row in result:
                 entrance = self.create_entrance(row['entrance_id'], row['lat'], row['lon'],
@@ -826,7 +825,7 @@ class POI:
         # transport lines
         station['lines'] = []
         if number_of_lines > 0:
-            result = DBControl().fetch_data("SELECT DISTINCT line, direction, type \
+            result = self.selected_db.fetch_data("SELECT DISTINCT line, direction, type \
                     from transport_lines where poi_id = %d ORDER BY type" % station_id)
             for row in result:
                 if not row.has_key("line"):

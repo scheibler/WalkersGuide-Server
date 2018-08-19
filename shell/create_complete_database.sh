@@ -5,7 +5,8 @@ folder_name=$(dirname "$0")
 source "$folder_name/configuration.sh"
 source "$folder_name/helper_functions.sh"
 
-echo "Create raw and productive database in one step at $(get_timestamp)"
+echo "Create raw and productive database $db_active_name in one step at $(get_timestamp)"
+
 # first, clean maps and temp folder
 if [ "$(ls -A $maps_folder 2> /dev/null)" != "" ]; then
     rm -R -f $maps_folder/*
@@ -22,23 +23,8 @@ if [ "$(ls -A $temp_folder 2> /dev/null)" != "" ]; then
     fi
 fi
 
-# prepare for differential map updates
-"$osmosis_file" --rrii workingDirectory="$maps_folder"
-if [[ $? != 0 ]]; then
-    exit 31
-fi
-echo -e "baseUrl="$update_map_url"\nmaxInterval = 86400" > "$maps_folder/configuration.txt"
-if [[ $? != 0 ]]; then
-    exit 31
-fi
-
-# download new map and state file
+# download new map
 echo "download new map -- started at $(get_timestamp)"
-wget -q -O "$map_state_file" "$download_state_file_url"
-if [ ! -f "$map_state_file" ]; then
-    echo "Error: Could not download new map state file"
-    exit 31
-fi
 wget -q -O "$pbf_osm_file" "$download_map_url"
 if [ ! -f "$pbf_osm_file" ]; then
     echo "Error: Could not download new map data"
@@ -61,7 +47,7 @@ fi
 
 # extract dumps from downloaded map file
 echo -e "\nCreate database dumps -- started at $(get_timestamp)"
-"$osmosis_file" --read-pbf-fast file="$pbf_osm_file" workers=4 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
+"$osmosis_file" --read-pbf-fast file="$pbf_osm_file" workers=8 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
 if [[ $? != 0 ]]; then
     echo "Can't create dumps for import"
     exit 32
@@ -70,7 +56,7 @@ fi
 # create new tmp database
 echo -e "\nCreate new tmp osm database -- started at $(get_timestamp)"
 # delete old temp database if available
-result=$(psql -h $server_address -U $user_name -l | grep -i "$db_tmp_name ")
+result=$(psql -h $server_address -U $user_name -l | cut -d '|' -f1 | tr -d ' ' | grep "^$db_tmp_name$")
 if [ ! -z "$result" ]; then
     # end all potential active connections to the tmp database
     postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
@@ -155,9 +141,6 @@ echo -e "\nRaw database creation was successful at $(get_timestamp)"
 
 # create route table and import into database
 echo -e "\nCreate route table and import into database -- started at $(get_timestamp)"
-prefix="$db_prefix"
-sufix="_2po_4pgr"
-routing_table_name="$prefix$sufix"
 # remove old data
 if [ -d "$temp_folder/$db_prefix" ]; then
     rm -R "$temp_folder/$db_prefix"
@@ -181,17 +164,17 @@ if [ ! -d "$temp_folder/$db_prefix" ]; then
 fi
 
 # delete last 6 lines from sql script
-head -n -6 "$temp_folder/$db_prefix/$routing_table_name.sql" > "$temp_folder/$db_prefix/$routing_table_name.sql.new"
+head -n -6 "$temp_folder/$db_prefix/$db_routing_table.sql" > "$temp_folder/$db_prefix/$db_routing_table.sql.new"
 if [[ $? != 0 ]]; then
     echo "Can't delete last 6 lines from routing table sql script"
     exit 23
 fi
-rm "$temp_folder/$db_prefix/$routing_table_name.sql"
+rm "$temp_folder/$db_prefix/$db_routing_table.sql"
 if [[ $? != 0 ]]; then
     echo "Can't delete old routing table sql script"
     exit 23
 fi
-mv "$temp_folder/$db_prefix/$routing_table_name.sql.new" "$temp_folder/$db_prefix/$routing_table_name.sql"
+mv "$temp_folder/$db_prefix/$db_routing_table.sql.new" "$temp_folder/$db_prefix/$db_routing_table.sql"
 if [[ $? != 0 ]]; then
     echo "Can't rename new routing table sql script"
     exit 23
@@ -205,7 +188,7 @@ commands="\
 -- update kmh table\n\
 -- set all cycleways (foot=yes), footways, tracks and paths with good smoothness,\n\
 -- hard surface, grade1 or grade2 to class 3 (paved ways)\n\
-update $routing_table_name set kmh=3 where \n\
+update $db_routing_table set kmh=3 where \n\
     (get_bit(flags::bit(16), 12) = 1 or get_bit(flags::bit(16), 10) = 1 or get_bit(flags::bit(16), 8) = 1)\n\
     and (\n\
         (kmh = 5 and clazz >= 13 and clazz <= 15)\n\
@@ -213,7 +196,7 @@ update $routing_table_name set kmh=3 where \n\
     );\n\
 -- set all cycleways (foot=yes), footways, services, tracks and paths with bad smoothness,\n\
 -- soft surface, grade3,4,5 to class 4 (unpaved ways)\n\
-update $routing_table_name set kmh=4 where \n\
+update $db_routing_table set kmh=4 where \n\
     (get_bit(flags::bit(16), 11) = 1 or get_bit(flags::bit(16), 9) = 1 or get_bit(flags::bit(16), 7) = 1)\n\
     and (\n\
         (kmh = 3 and clazz = 12)\n\
@@ -221,44 +204,44 @@ update $routing_table_name set kmh=4 where \n\
         or (kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1)\n\
     );\n\
 -- set all service roads with name to class 2 (small streets)\n\
-update $routing_table_name set kmh=2 where kmh = 3 and clazz = 12 and get_bit(flags::bit(16), 6) = 1;\n\
+update $db_routing_table set kmh=2 where kmh = 3 and clazz = 12 and get_bit(flags::bit(16), 6) = 1;\n\
 -- set all other cycleways with foot = yes to class 5 (unclassified ways)\n\
-update $routing_table_name set kmh=5 where kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1;\n\
+update $db_routing_table set kmh=5 where kmh = 7 and clazz = 17 and get_bit(flags::bit(16), 14) = 1;\n\
 -- set all ways with foot = no to class 7 (impassable)\n\
-update $routing_table_name set kmh=7 where get_bit(flags::bit(16), 13) = 1;\n\
+update $db_routing_table set kmh=7 where get_bit(flags::bit(16), 13) = 1;\n\
 -- set all ways with access = no and foot != yes to class 7 (impassable)\n\
-update $routing_table_name set kmh=7 where get_bit(flags::bit(16), 4) = 1 AND get_bit(flags::bit(16), 14) = 0;\n\
+update $db_routing_table set kmh=7 where get_bit(flags::bit(16), 4) = 1 AND get_bit(flags::bit(16), 14) = 0;\n\
 \n\
 -- create index\n\
-ALTER TABLE $routing_table_name ADD CONSTRAINT pkey_"$routing_table_name" PRIMARY KEY(id);\n\
-CREATE INDEX idx_"$routing_table_name"_source ON $routing_table_name(source);\n\
-CREATE INDEX idx_"$routing_table_name"_target ON $routing_table_name(target);\n\
-CREATE INDEX idx_"$routing_table_name"_osm_source_id ON $routing_table_name(osm_source_id);\n\
-CREATE INDEX idx_"$routing_table_name"_osm_target_id ON $routing_table_name(osm_target_id);\n\
-CREATE INDEX idx_"$routing_table_name"_geom_way  ON $routing_table_name USING GIST (geom_way);\n\
+ALTER TABLE $db_routing_table ADD CONSTRAINT pkey_"$db_routing_table" PRIMARY KEY(id);\n\
+CREATE INDEX idx_"$db_routing_table"_source ON $db_routing_table(source);\n\
+CREATE INDEX idx_"$db_routing_table"_target ON $db_routing_table(target);\n\
+CREATE INDEX idx_"$db_routing_table"_osm_source_id ON $db_routing_table(osm_source_id);\n\
+CREATE INDEX idx_"$db_routing_table"_osm_target_id ON $db_routing_table(osm_target_id);\n\
+CREATE INDEX idx_"$db_routing_table"_geom_way  ON $db_routing_table USING GIST (geom_way);\n\
 \n\
 -- cluster and analyse\n\
-cluster $routing_table_name USING idx_"$routing_table_name"_geom_way;\n\
-ANALYSE $routing_table_name;\n\
+cluster $db_routing_table USING idx_"$db_routing_table"_geom_way;\n\
+ANALYSE $db_routing_table;\n\
 \n\
 -- create and fill way class weights for several factors\n\
-DROP TABLE IF EXISTS way_class_weights;\n\
-CREATE TABLE way_class_weights(\n\
+DROP TABLE IF EXISTS $db_way_class_weights;\n\
+CREATE TABLE $db_way_class_weights(\n\
     id int,\n\
     x4 int,\n\
     x3 int,\n\
     x2 int,\n\
     x1_5 int,\n\
     x1 int );\n\
-CREATE UNIQUE INDEX way_class_weights_idx ON way_class_weights (id);\n\
-INSERT INTO way_class_weights VALUES (1, 60, 50, 33, 20, 0);\n\
-INSERT INTO way_class_weights VALUES (2, 0, 0, 0, 0, 0);\n\
-INSERT INTO way_class_weights VALUES (3, -60, -50, -33, -20, 0);\n\
-INSERT INTO way_class_weights VALUES (4, 101, 101, 101, 101, 101);"
-echo -e "$commands" >> "$temp_folder/$db_prefix/$routing_table_name.sql"
+CREATE UNIQUE INDEX way_class_weights_idx ON $db_way_class_weights (id);\n\
+INSERT INTO $db_way_class_weights VALUES (1, 60, 50, 33, 20, 0);\n\
+INSERT INTO $db_way_class_weights VALUES (2, 0, 0, 0, 0, 0);\n\
+INSERT INTO $db_way_class_weights VALUES (3, -60, -50, -33, -20, 0);\n\
+INSERT INTO $db_way_class_weights VALUES (4, 101, 101, 101, 101, 101);"
+echo -e "$commands" >> "$temp_folder/$db_prefix/$db_routing_table.sql"
 
 # import data into database
-psql -h $server_address -U $user_name -d $db_tmp_name -1 -q -X -v ON_ERROR_STOP=1 -f "$temp_folder/$db_prefix/$routing_table_name.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -1 -q -X -v ON_ERROR_STOP=1 -f "$temp_folder/$db_prefix/$db_routing_table.sql"
 if [[ $? != 0 ]]; then
     exit 23
 fi
@@ -346,6 +329,21 @@ if [[ $? != 0 ]]; then
 fi
 cd "$old_directory"
 
+# create wg_map_version table
+create_map_version_table="\
+DROP TABLE IF EXISTS $db_map_info;
+CREATE TABLE $db_map_info (id text, version integer, created bigint);"
+psql -h $server_address -U $user_name -d $db_tmp_name -c "$create_map_version_table"
+if [[ $? != 0 ]]; then
+    exit 23
+fi
+insert_version_information="\
+INSERT INTO $db_map_info VALUES ('$db_active_name', $db_map_version, $(date +%s%3N));"
+psql -h $server_address -U $user_name -d $db_tmp_name -c "$insert_version_information"
+if [[ $? != 0 ]]; then
+    exit 23
+fi
+
 # clean up new database
 echo -e "\nanalyse database -- started at $(get_timestamp)"
 psql -h $server_address -U $user_name -d $db_tmp_name -c "VACUUM ANALYZE;"
@@ -356,7 +354,7 @@ fi
 
 echo -e "\nrename databases -- started at $(get_timestamp)"
 # delete previous productive database if available
-result=$(psql -h $server_address -U $user_name -l | grep -i "$db_active_name")
+result=$(psql -h $server_address -U $user_name -l | cut -d '|' -f1 | tr -d ' ' | grep "^$db_active_name$")
 if [ ! -z "$result" ]; then
     # end all potential active connections to the productive database
     postgresql_version=$(psql --version | head -n 1 | awk '{print $3}' | awk -F "." '{print $1$2}')
@@ -381,23 +379,10 @@ if [[ $? != 0 ]]; then
     exit 27
 fi
 
-# copy map state file to provide the productive db version information
-cp "$map_state_file" "$productive_db_map_state_file"
-if [[ $? != 0 ]]; then
-    echo "Can't copy map state file"
-    exit 28
-fi
-
 # remove o5m map file
 rm -f "$o5m_osm_file"
-
 # and rename pbf map file
-local_map_version=$(get_local_map_sequence_number)
-if [[ $? != 0 ]]; then
-    echo "Can't get local map state version"
-    exit 28
-fi
-mv "$pbf_osm_file" "${pbf_osm_file:0:-4}.$local_map_version.pbf"
+mv "$pbf_osm_file" "${pbf_osm_file:0:-4}.$db_active_name.$(get_current_date).pbf"
 
 # clean temp folder again
 rm -R -f $temp_folder/*

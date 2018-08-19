@@ -4,15 +4,14 @@
 import geometry, time, re
 from py4j.java_gateway import JavaGateway, GatewayClient
 from config import Config
-from db_control import DBControl
 from poi import POI 
 from translator import Translator
 
 class StationFinder:
 
-    def __init__(self, translator_object, public_transport_provider,):
+    def __init__(self, db, translator_object, public_transport_provider,):
         self.translator = translator_object
-        self.poi = POI("00000", translator_object, True)
+        self.poi = POI(db, "00000", translator_object, True)
         self.stations = []
         self.public_transport_provider, = public_transport_provider,
 
@@ -105,7 +104,7 @@ class StationFinder:
 
     def choose_station_by_vehicle_type(self, station_list, lat, lon, vehicles):
         print(station_list)
-        gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
+        gateway = JavaGateway(GatewayClient(port=Config().java.get("gateway_port")), auto_field=True)
         for station in station_list:
             distance_to_station = geometry.distance_between_two_points(lat, lon,
                     geometry.convert_coordinate_to_float(station.lat),

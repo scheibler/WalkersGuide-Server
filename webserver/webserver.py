@@ -5,22 +5,22 @@ import os, cherrypy, json, math, time
 from datetime import datetime
 from py4j.java_gateway import JavaGateway, GatewayClient
 
-import geometry, helper
+import constants, geometry, helper
 from config import Config
 from db_control import DBControl
 from poi import POI
 from route_footway_creator import RouteFootwayCreator
-from route_logger import RouteLogger
+from wg_logger import WGLogger
 from route_transport_creator import RouteTransportCreator
 from station_finder import StationFinder
 from translator import Translator 
 
 class RoutingWebService():
 
-    supported_route_point_objects = ["point", "entrance", "gps", "intersection", "pedestrian_crossing", "poi", "station", "street_address"]
-    supported_route_segment_objects = ["footway", "footway_intersection", "footway_route", "transport"]
-    supported_indirection_factors = [1.0, 1.5, 2.0, 3.0, 4.0]
-    supported_way_classes = ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways", "steps"]
+    def __init__(self):
+        print("init")
+        for map_id, map_data in self.get_compatible_maps().items():
+            print("%s: %s" % (map_id, map_data))
 
     def index(self):
         return ''
@@ -36,31 +36,43 @@ class RoutingWebService():
         return_tuple['route'] = []
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        translator = Translator(Config().get_param("default_language"))
+        translator = Translator(Config().default_language)
         # parse json encoded input
         input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        print(input)
 
         # user language
-        language = Config().get_param("default_language")
-        if input.has_key("language"):
-            if input['language'] == "de":
-                language = input['language']
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
+        if input.get("language") in constants.supported_language_list:
+            translator = Translator(input.get("language"))
+
+        # selected map
+        try:
+            db = DBControl(input.get("map_id"))
+        except (DBControl.DatabaseNameEmptyError, \
+                DBControl.DatabaseNotExistError, \
+                DBControl.DatabaseVersionIncompatibleError) as e:
+            return_tuple['error'] = e
+            return helper.zip_data(return_tuple)
+
+        # logging allowed
+        logging_allowed = False
+        if input.get("logging_allowed"):
+            logging_allowed = True
 
         # indirection factor
         indirection_factor = 2.0
-        if input.has_key("indirection_factor") and input['indirection_factor'] in self.supported_indirection_factors:
+        if input.has_key("indirection_factor") \
+                and input['indirection_factor'] in constants.supported_indirection_factor_list:
             indirection_factor = input['indirection_factor']
 
         # allowed way classes
         allowed_way_classes = []
         if input.has_key("allowed_way_classes") and type(input['allowed_way_classes']) is list:
             for way_class in input['allowed_way_classes']:
-                if way_class in self.supported_way_classes:
+                if way_class in constants.supported_way_class_list:
                     allowed_way_classes.append(way_class)
-        if len(allowed_way_classes) == 0:
-            allowed_way_classes = self.supported_way_classes
+        if not allowed_way_classes:
+            allowed_way_classes = constants.supported_way_class_list
 
         # blocked way ids
         blocked_ways = []
@@ -80,7 +92,7 @@ class RoutingWebService():
         else:
             # check if source points are valid
             for point in input['source_points']:
-                if point.get('type') not in self.supported_route_point_objects:
+                if point.get('type') not in constants.supported_route_point_object_list:
                     return_tuple['error'] = translator.translate("message", "source_route_incomplete")
                     return helper.zip_data(return_tuple)
         source_points = input['source_points']
@@ -95,13 +107,16 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "old_request_still_running")
             return helper.zip_data(return_tuple)
         # this code is onley reached, if the prior session was canceled successfully
-        if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
+        if Config().number_of_session_ids() == Config().webserver.get("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         # create route logger object
-        route_logger = RouteLogger("routes", "%s---%s" % (source_points[0]['name'], source_points[-1]['name']))
+        route_logger = WGLogger(
+                Config().paths.get("routes_log_folder"),
+                "%s---%s" % (source_points[0]['name'], source_points[-1]['name']),
+                logging_allowed)
         # and append the source points
         route_logger.append_to_log("\n----- start of source points -----")
         route_logger.append_to_log( json.dumps( source_points, indent=4, encoding="utf-8") \
@@ -109,7 +124,7 @@ class RoutingWebService():
 
         # get a route
         rfc = RouteFootwayCreator(
-                session_id, route_logger, translator, indirection_factor, allowed_way_classes, blocked_ways)
+                db, session_id, route_logger, translator, indirection_factor, allowed_way_classes, blocked_ways)
         for i in range(1, len(source_points)):
             try:
                 route_part = rfc.find_footway_route(
@@ -158,17 +173,23 @@ class RoutingWebService():
         return_tuple['next_intersections'] = []
         return_tuple['warning'] = ""
         return_tuple['error'] = ""
-        translator = Translator(Config().get_param("default_language"))
+        translator = Translator(Config().default_language)
         # parse json encoded input
         input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        print(input)
 
         # user language
-        language = Config().get_param("default_language")
-        if input.has_key("language"):
-            if input['language'] == "de":
-                language = input['language']
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
+        if input.get("language") in constants.supported_language_list:
+            translator = Translator(input.get("language"))
+
+        # selected map
+        try:
+            db = DBControl(input.get("map_id"))
+        except (DBControl.DatabaseNameEmptyError, \
+                DBControl.DatabaseNotExistError, \
+                DBControl.DatabaseVersionIncompatibleError) as e:
+            return_tuple['error'] = e
+            return helper.zip_data(return_tuple)
 
         # node_id, way_id and next_node_id
         if not input.get("node_id"):
@@ -188,14 +209,14 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "old_request_still_running")
             return helper.zip_data(return_tuple)
         # this code is onley reached, if the prior session was canceled successfully
-        if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
+        if Config().number_of_session_ids() == Config().webserver.get("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         print("Next Intersections for node_id:%d, way_id:%d, next_node_id: %d" \
                 % (input.get("node_id"), input.get("way_id"), input.get("next_node_id")))
-        poi = POI(session_id, translator)
+        poi = POI(db, session_id, translator)
         try:
             next_intersection_list = poi.next_intersections_for_way(
                 input.get("node_id"), input.get("way_id"), input.get("next_node_id"))
@@ -219,22 +240,27 @@ class RoutingWebService():
         return_tuple = {}
         return_tuple['poi'] = []
         return_tuple['error'] = ""
-        translator = Translator(Config().get_param("default_language"))
+        translator = Translator(Config().default_language)
         # parse json encoded input
-        options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
-        print(options)
+        input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        print(input)
 
         # user language
-        language = Config().get_param("default_language")
-        if options.has_key("language"):
-            if options['language'] == "de":
-                language = options['language']
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
+        if input.get("language") in constants.supported_language_list:
+            translator = Translator(input.get("language"))
+
+        # selected map
+        try:
+            db = DBControl(input.get("map_id"))
+        except (DBControl.DatabaseNameEmptyError, \
+                DBControl.DatabaseNotExistError, \
+                DBControl.DatabaseVersionIncompatibleError) as e:
+            return_tuple['error'] = e
+            return helper.zip_data(return_tuple)
 
         # check latitude, longitude and radius input
         try:
-            lat = float(options['lat'])
+            lat = float(input['lat'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_latitude_value")
             return helper.zip_data(return_tuple)
@@ -242,7 +268,7 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_latitude_value")
             return helper.zip_data(return_tuple)
         try:
-            lon = float(options['lon'])
+            lon = float(input['lon'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
@@ -250,8 +276,8 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
         try:
-            radius = int(options['radius'])
-            number_of_results = int(options['number_of_results'])
+            radius = int(input['radius'])
+            number_of_results = int(input['number_of_results'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_range_value")
             return helper.zip_data(return_tuple)
@@ -261,34 +287,37 @@ class RoutingWebService():
 
         # tags and search
         # tag list
-        if options.has_key("tags") == False \
-                or type(options['tags']) is not list \
-                or len(options['tags']) == 0:
+        tag_list = []
+        if input.get("tags") \
+                and type(input.get("tags")) is list:
+            for tag in input.get("tags"):
+                if tag in constants.supported_poi_category_listp:
+                    tag_list.append(tag)
+        if not tag_list:
             return_tuple['error'] = translator.translate("message", "no_tags_value")
             return helper.zip_data(return_tuple)
-        tag_list = options['tags']
         # search
         try:
-            search = options['search']
+            search = input['search']
         except KeyError as e:
             search = ""
 
         # create session id
-        if options.has_key("session_id") == False:
+        if input.has_key("session_id") == False:
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
             return helper.zip_data(return_tuple)
-        session_id = options['session_id']
+        session_id = input['session_id']
         # try to cancel prior request
         if Config().clean_old_session(session_id) == False:
             return_tuple['error'] = translator.translate("message", "old_request_still_running")
             return helper.zip_data(return_tuple)
-        if Config().number_of_session_ids() == Config().get_param("thread_pool") - 1:
+        if Config().number_of_session_ids() == Config().webserver.get("thread_pool") - 1:
             return_tuple['error'] = translator.translate("message", "server_busy")
             return helper.zip_data(return_tuple)
         Config().add_session_id(session_id)
 
         # get poi
-        poi = POI(session_id, translator)
+        poi = POI(db, session_id, translator)
         poi_list = poi.get_poi(lat, lon, radius, number_of_results, tag_list, search)
         if poi_list == None:
             Config().confirm_removement_of_session_id(session_id)
@@ -311,21 +340,32 @@ class RoutingWebService():
         return_tuple = {}
         return_tuple['departures'] = []
         return_tuple['error'] = ""
-        translator = Translator(Config().get_param("default_language"))
+        translator = Translator(Config().default_language)
         # parse json encoded input
-        options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
 
         # user language
-        language = Config().get_param("default_language")
-        if options.has_key("language"):
-            if options['language'] == "de":
-                language = options['language']
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
+        if input.get("language") in constants.supported_language_list:
+            translator = Translator(input.get("language"))
+
+        # selected map
+        try:
+            db = DBControl(input.get("map_id"))
+        except (DBControl.DatabaseNameEmptyError, \
+                DBControl.DatabaseNotExistError, \
+                DBControl.DatabaseVersionIncompatibleError) as e:
+            return_tuple['error'] = e
+            return helper.zip_data(return_tuple)
+
+        # public transport provider
+        if input.get("public_transport_provider") not in constants.supported_public_transport_provider_list:
+            return_tuple['error'] = translator.translate("message", "no_public_transport_provider")
+            return helper.zip_data(return_tuple)
+        public_transport_provider = input.get("public_transport_provider")
 
         # check latitude and longitude
         try:
-            lat = float(options['lat'])
+            lat = float(input['lat'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_latitude_value")
             return helper.zip_data(return_tuple)
@@ -333,7 +373,7 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_latitude_value")
             return helper.zip_data(return_tuple)
         try:
-            lon = float(options['lon'])
+            lon = float(input['lon'])
         except KeyError as e:
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
@@ -341,18 +381,13 @@ class RoutingWebService():
             return_tuple['error'] = translator.translate("message", "no_longitude_value")
             return helper.zip_data(return_tuple)
 
-        # vehicles and public transport provider
+        # vehicle list
         vehicle_list = []
-        if options.has_key("vehicles") and type(options['vehicles']) is list:
-            vehicle_list = options['vehicles']
-        public_transport_provider = Config().get_param("default_public_transport_provider")
-        if options.has_key("public_transport_provider"):
-            if options['public_transport_provider'] in \
-                    Config().get_section("public_transport_provider_list").keys():
-                public_transport_provider = options['public_transport_provider']
+        if input.has_key("vehicles") and type(input['vehicles']) is list:
+            vehicle_list = input['vehicles']
 
         # get the nearest stations for this coordinates and take the first one
-        gateway = JavaGateway(GatewayClient(port=Config().get_param("gateway_port")), auto_field=True)
+        gateway = JavaGateway(GatewayClient(port=Config().java.get("gateway_port")), auto_field=True)
         main_point = gateway.entry_point
         closest_stations_result = main_point.getNearestStations(
                 public_transport_provider,
@@ -372,7 +407,7 @@ class RoutingWebService():
             return helper.zip_data(return_tuple)
 
         # get departures for station
-        sfinder = StationFinder(translator, public_transport_provider)
+        sfinder = StationFinder(db, translator, public_transport_provider)
         station = sfinder.choose_station_by_vehicle_type(
                 closest_stations_result.locations, lat, lon, vehicle_list)
         departures_result = main_point.getDepartures(
@@ -400,24 +435,19 @@ class RoutingWebService():
         # create the return tuple
         return_tuple = {}
         return_tuple['error'] = ""
+        translator = Translator(Config().default_language)
         # parse json encoded input
-        options = helper.convert_dict_values_to_utf8( cherrypy.request.json )
+        input = helper.convert_dict_values_to_utf8( cherrypy.request.json )
         # user language
-        language = ""
-        if options.has_key("language") == True:
-            language = options['language']
-        # if the user sends a language, which is not german, take the default language setting
-        if language != "de":
-            language = Config().get_param("default_language")
-        # initialize the translator object with the user's choosen language
-        translator = Translator(language)
+        if input.get("language") in constants.supported_language_list:
+            translator = Translator(input.get("language"))
         # create session id
-        if options.has_key("session_id") == False:
+        if input.has_key("session_id") == False:
             return_tuple['error'] = translator.translate("message", "no_session_id_option")
             return helper.zip_data(return_tuple)
         # request cancelling of running processes
-        Config().query_removement_of_session_id(options['session_id'])
-        print "cancel session id %s" % options['session_id']
+        Config().query_removement_of_session_id(input['session_id'])
+        print("cancel session id %s" % input['session_id'])
         return helper.zip_data(return_tuple)
     cancel_request.exposed = True
 
@@ -427,48 +457,57 @@ class RoutingWebService():
         cherrypy.response.headers['Content-Type'] = 'application/gzip'
         # create the return tuple
         return_tuple = {}
-        # map name and version
-        return_tuple['map_name'] = Config().get_param("map_name")
-        return_tuple['map_version'] = Config().get_param("map_version")
-        # try to get map creation date
-        try:
-            with open(os.path.join(Config().get_param("maps_folder"), "state.txt.productive"), "r") as f:
-                for line in f.readlines():
-                    if line.startswith("timestamp"):
-                        map_creation_date = datetime.strptime(
-                                line.split("=")[1].replace("\\", "").strip(),
-                                "%Y-%m-%dT%H:%M:%SZ")
-                        map_creation_unix_float = time.mktime(map_creation_date.timetuple())
-                        return_tuple['map_created'] = int(map_creation_unix_float)*1000
-                        break
-        except IOError, ValueError:
-            return_tuple['map_created'] = 0
-        # supported poi categories
-        return_tuple['supported_poi_tags'] = ["transport_bus_tram", "transport_train_lightrail_subway",
-                "transport_airport_ferry_aerialway", "transport_taxi", "food", "entertainment",
-                "tourism", "nature", "finance", "shop", "health", "education", "public_service",
-                "all_buildings_with_name", "entrance", "surveillance", "bench", "trash", "bridge",
-                "named_intersection", "other_intersection", "pedestrian_crossings"]
-        # supported languages and public transport provider
-        return_tuple['supported_languages'] = Config().get_section("language_list")
-        return_tuple['supported_public_transport_provider'] = Config().get_section("public_transport_provider_list")
+        # server params
+        return_tuple['server_name'] = Config().server_name
+        return_tuple['server_version'] = constants.server_version
+        return_tuple['supported_api_version_list'] = constants.supported_api_version_list
+        return_tuple['supported_map_version_list'] = constants.supported_map_version_list
+        # maps
+        return_tuple['maps'] = self.get_compatible_maps()
+        # supported poi categories, languages and public transport provider
+        return_tuple['supported_poi_category_list'] = constants.supported_poi_category_listp
+        return_tuple['supported_language_list'] = constants.supported_language_list
+        return_tuple['supported_public_transport_provider_list'] = constants.supported_public_transport_provider_list
         # routing params
-        return_tuple['supported_indirection_factors'] = self.supported_indirection_factors
-        return_tuple['supported_way_classes'] = self.supported_way_classes
+        return_tuple['supported_indirection_factor_list'] = constants.supported_indirection_factor_list
+        return_tuple['supported_way_class_list'] = constants.supported_way_class_list
         # convert return_tuple to json and zip it, before returning
         return helper.zip_data(return_tuple)
     get_status.exposed = True
 
 
+    def get_compatible_maps(self):
+        compatible_maps = {}
+        for map_id, map_data in Config().maps.items():
+            try:
+                db = DBControl(map_id)
+            except DBControl.DatabaseNotExistError as e:
+                logging.error(e)
+            except DBControl.DatabaseVersionIncompatibleError as e:
+                logging.error(e)
+            else:
+                # extend with map version and creation date from the database table "map_info"
+                map_data['version'] = db.map_version
+                map_data['created'] = db.map_created
+                compatible_maps[map_id] = map_data
+        return compatible_maps
+
+
 ###################
 ### start webserver
-if __name__ == '__main__':
-    cherrypy.config['server.socket_host'] = Config().get_param("host")
-    cherrypy.config['server.socket_port'] = Config().get_param("port")
-    cherrypy.config['server.thread_pool'] = Config().get_param("thread_pool")
+
+def start():
+    cherrypy.config['server.socket_host'] = Config().webserver.get("host_name")
+    cherrypy.config['server.socket_port'] = Config().webserver.get("port")
+    cherrypy.config['server.thread_pool'] = Config().webserver.get("thread_pool")
     cherrypy.config['tools.encode.on'] = True
     cherrypy.config['tools.encode.encoding'] = "utf-8"
+    cherrypy.log.screen = False
     cherrypy.quickstart( RoutingWebService() )
+
+
+if __name__ == '__main__':
+    start()
 
 ### to be updated ###
 #
