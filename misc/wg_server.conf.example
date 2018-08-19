@@ -19,7 +19,10 @@ thread_pool = 10
 gateway_port = 34568
 ram = 16G
 
+
+### maps ###
 [maps]
+
 [[germany]]
 # name and description
 name = Germany

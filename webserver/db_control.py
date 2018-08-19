@@ -20,18 +20,18 @@ class DBControl():
         self.password = Config().database.get("password")
         # database name
         if not map_id:
-            raise DatabaseNameEmptyError("The database name is empty")
+            raise DBControl.DatabaseNameEmptyError("The database name is empty")
         self.db_name = map_id
         # get databases map version and creation date
         try:
             map_info = self.fetch_data("SELECT version, created FROM %s WHERE id = '%s'" \
                     % (Config().database.get("map_info"), map_id))[0]
-        except (IndexError, KeyError) as e:
-            raise DatabaseNotExistError("The database %s does not exist" % map_id)
+        except (psycopg2.DatabaseError, IndexError, KeyError) as e:
+            raise DBControl.DatabaseNotExistError("The database %s does not exist" % map_id)
         # version and creation date
         self.map_version = map_info['version']
         if self.map_version not in constants.supported_map_version_list:
-            raise DatabaseVersionIncompatibleError("The database %s is not compatible.\n" \
+            raise DBControl.DatabaseVersionIncompatibleError("The database %s is not compatible.\n" \
                     "Map version: %d not in [%s]" % (map_id, self.map_version,
                         ','.join(constants.supported_map_version_list)))
         # map creation
@@ -51,7 +51,7 @@ class DBControl():
                 rows = []
             else:
                 print e
-                sys.exit(1)
+                raise
         finally:
             if con:
                 con.close()

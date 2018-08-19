@@ -1,8 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import os, cherrypy, json, math, time
+import os, logging, math, time
 from datetime import datetime
+
+import cherrypy, json
 from py4j.java_gateway import JavaGateway, GatewayClient
 
 import constants, geometry, helper
@@ -11,7 +13,6 @@ from db_control import DBControl
 from poi import POI
 from route_footway_creator import RouteFootwayCreator
 from wg_logger import WGLogger
-from route_transport_creator import RouteTransportCreator
 from station_finder import StationFinder
 from translator import Translator 
 
@@ -481,9 +482,9 @@ class RoutingWebService():
         for map_id, map_data in Config().maps.items():
             try:
                 db = DBControl(map_id)
-            except DBControl.DatabaseNotExistError as e:
-                logging.error(e)
-            except DBControl.DatabaseVersionIncompatibleError as e:
+            except (DBControl.DatabaseNameEmptyError, \
+                    DBControl.DatabaseNotExistError, \
+                    DBControl.DatabaseVersionIncompatibleError) as e:
                 logging.error(e)
             else:
                 # extend with map version and creation date from the database table "map_info"
