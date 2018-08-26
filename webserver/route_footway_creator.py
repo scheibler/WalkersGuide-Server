@@ -3,7 +3,7 @@
 
 from config import Config
 from poi import POI
-import geometry
+import constants, geometry
 import time, json, operator, re, math
 
 class RouteFootwayCreator:
@@ -94,7 +94,11 @@ class RouteFootwayCreator:
         distance_between_start_and_destination = geometry.distance_between_two_points(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])
-        print "radius = %d" % distance_between_start_and_destination
+        print "distance_between_start_and_destination = %d" % distance_between_start_and_destination
+        if distance_between_start_and_destination > constants.max_distance_between_start_and_destination_in_meters:
+            raise RouteFootwayCreator.FootwayRouteCreationError(
+                    self.translator.translate(
+                        "footway_creator", "foot_route_creation_failed_max_distance"))
         center_point = geometry.get_center_point(
                 start_point['lat'], start_point['lon'],
                 dest_point['lat'], dest_point['lon'])

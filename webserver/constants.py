@@ -6,6 +6,7 @@ supported_language_list = ["en", "de"]
 # supported public transport provider
 supported_public_transport_provider_list = ["db", "vbb"]
 # routing constants
+max_distance_between_start_and_destination_in_meters = 25000
 supported_route_point_object_list = ["point", "entrance", "gps", "intersection", "pedestrian_crossing", "poi", "station", "street_address"]
 supported_route_segment_object_list = ["footway", "footway_intersection", "footway_route", "transport"]
 supported_indirection_factor_list = [1.0, 1.5, 2.0, 3.0, 4.0]

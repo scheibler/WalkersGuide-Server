@@ -28,7 +28,7 @@ class WGLogger:
                     self.log_folder_name, self.log_file_name)
             # cut file name if it's too long
             if log_folder_and_file_name.__len__() >= os.pathconf(self.log_folder_name, 'PC_NAME_MAX'):
-                self.log_folder_and_file_name = "%s.log" \
+                log_folder_and_file_name = "%s.log" \
                         % log_folder_and_file_name[:os.pathconf(self.log_folder_name, 'PC_NAME_MAX')-10]
             # append to log file
             with open(log_folder_and_file_name, "a") as log_file:

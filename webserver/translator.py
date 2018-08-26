@@ -52,6 +52,9 @@ class Translator:
 
         if category == "footway_creator":
             if tag == "foot_route_creation_failed": return "Die Fußgängerroute konnte nicht erstellt werden."
+            if tag == "foot_route_creation_failed_max_distance":
+                return "Die Fußgängerroute konnte nicht erstellt werden. " \
+                        "Maximale Entfernung zwischen Start und Ziel überschritten."
             if tag == "foot_route_creation_failed_way_classes_missing":
                 return "Die Fußgängerroute konnte nicht erstellt werden. " \
                         "Aktivieren sie weitere Wegklassen und versuchen Sie es erneut."
@@ -663,6 +666,9 @@ class Translator:
 
         if category == "footway_creator":
             if tag == "foot_route_creation_failed": return "The footway route could not be created."
+            if tag == "foot_route_creation_failed_max_distance":
+                return "The footway route could not be created. " \
+                        "Maximal distance between start and destination exceeded."
             if tag == "foot_route_creation_failed_way_classes_missing":
                 return "The footway route could not be created. " \
                         "Please activate additional way classes and try again."
