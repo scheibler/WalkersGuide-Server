@@ -1,4 +1,36 @@
-Routing server
+Change Log
+==========
+
+
+v1.0.1: 2018-09-09
+------------------
+
+Added: Start intersections at get_next_intersections_for_way
+Added: Max distance between route start and destination points
+Fixed: logger didn't cut name of log file if it was too long
+
+
+
+v1.0.0: 2018-08-21
+------------------
+
+New project structure
+Support for more than one map per server instance
+wg_server.py: New main executable
+    - python wg_server.py create-map-database MAP_ID
+    - python wg_server.py start-webserver
+    - python wg_server.py start-public-transport-library
+
+Miscellaneous features and fixes:
+- New function to query the next intersections from a given way point and direction
+- New attributes for poi segment: description, smoothness, surface
+- POI search with increasing radius
+- Address split into several components
+
+
+
+Old changes
+-----------
 
 v0.1.0, 01.09.2014:
     - Initial release
