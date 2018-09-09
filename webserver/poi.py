@@ -273,7 +273,13 @@ class POI:
                 comparison_operator = "<"
                 order_direction = "DESC"
 
-        # build next node list
+        # create node list and add start intersection
+        next_node_list = []
+        first_node = self.create_intersection_by_id(node_id)
+        if first_node:
+            next_node_list.append(first_node)
+
+        # collect next node id list
         next_node_id_list = []
         index = 0
         while True:
@@ -325,7 +331,7 @@ class POI:
                 break
 
         # create point objects and return
-        next_node_list = []
+        # walk through next_node_id_list and create intersections and way points
         for next_node_id in next_node_id_list:
             next_node = self.create_intersection_by_id(
                     next_node_id.get("node_id"))
