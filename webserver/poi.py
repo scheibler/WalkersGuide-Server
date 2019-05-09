@@ -265,7 +265,6 @@ class POI:
             raise POI.POICreationError(
                     self.translator.translate("message", "way_id_invalid"))
         else:
-            print("%d < %d then asc" % (node_id_seq_nr, next_node_id_seq_nr))
             if node_id_seq_nr < next_node_id_seq_nr:
                 comparison_operator = ">"
                 order_direction = "ASC"
@@ -284,14 +283,12 @@ class POI:
         index = 0
         while True:
             index += 1
-            print("...iteration %d" % index)
             next_node_id_list += self.selected_db.fetch_data(
                     "select node_id from way_nodes " \
                     "WHERE way_id = %d AND sequence_id %s %d ORDER BY sequence_id %s" \
                     % (way_id, comparison_operator, node_id_seq_nr, order_direction))
             # set on the start of the next potential way
             node_id = next_node_id_list[-1]['node_id']
-            print("udated node id: %d" % node_id)
             potential_next_way_list = []
             for potential_next_way in self.selected_db.fetch_data(
                     "SELECT wn.sequence_id AS sequence_id, w.id AS way_id, w.tags AS way_tags " \
@@ -301,26 +298,22 @@ class POI:
                 if potential_next_way_tags.get("name") \
                         and potential_next_way_tags.get("name") == way_tags.get("name"):
                     potential_next_way_list.append(potential_next_way)
-                    print("match name: %s" % potential_next_way)
                 elif potential_next_way_tags.get("surface") \
                         and potential_next_way_tags.get("surface") == way_tags.get("surface") \
                         and potential_next_way_tags.get("tracktype") \
                         and potential_next_way_tags.get("tracktype") == way_tags.get("tracktype"):
                     potential_next_way_list.append(potential_next_way)
-                    print("match surface and tracktype: %s" % potential_next_way)
                 elif potential_next_way_tags.get("surface") \
                         and potential_next_way_tags.get("surface") == way_tags.get("surface") \
                         and potential_next_way_tags.get("smoothness") \
                         and potential_next_way_tags.get("smoothness") == way_tags.get("smoothness"):
                     potential_next_way_list.append(potential_next_way)
-                    print("match surface and smoothness: %s" % potential_next_way)
             if len(potential_next_way_list) == 1:
                 way_id = potential_next_way_list[0]['way_id']
                 way_tags = self.parse_hstore_column(
                         potential_next_way_list[0]['way_tags'])
                 # comparison and order direction
                 node_id_seq_nr = potential_next_way_list[0]['sequence_id']
-                print("updated way id: %d,    seq: %d" % (way_id, node_id_seq_nr))
                 if node_id_seq_nr == 0:
                     comparison_operator = ">"
                     order_direction = "ASC"

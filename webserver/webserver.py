@@ -139,11 +139,13 @@ class RoutingWebService():
             if len(return_tuple['route']) > 0:
                 route_part.__delitem__(0)
             return_tuple['route'] += route_part
+
         # delete start point and first route segment, if it's a nameless one, just added as place holder
-        if len(return_tuple['route']) >= 3 \
+        if len(return_tuple['route']) > 3 \
                 and return_tuple['route'][1].get("sub_type") == "":
             return_tuple['route'].__delitem__(0)
             return_tuple['route'].__delitem__(0)
+
         # check for missing turn values at intersections and poi
         # for example this can happen, if an intersection is a intermediate destination of a source route
         for i in range(0, len(return_tuple['route']), 2):
@@ -153,11 +155,55 @@ class RoutingWebService():
                             return_tuple['route'][i+1]['bearing'], return_tuple['route'][i-1]['bearing'])
                 except (IndexError, KeyError):
                     return_tuple['route'][i]['turn'] = -1
+
+        # part of route parameters
+        for i in range(0, len(return_tuple['route']), 2):
+            if return_tuple['route'][i] \
+                    and return_tuple['route'][i].get("type") == "intersection":
+                intersection = return_tuple['route'][i]
+                # previous route segment
+                minimal_bearing_difference_previous = 180
+                index_of_previous = -1
+                bearing_of_previous_route_segment = None
+                if return_tuple['route'][i-1] \
+                        and return_tuple['route'][i-1].get("bearing"):
+                    bearing_of_previous_route_segment = return_tuple['route'][i-1].get("bearing")
+                # next route segment
+                minimal_bearing_difference_next = 180
+                index_of_next = -1
+                bearing_of_next_route_segment = None
+                if return_tuple['route'][i+1] \
+                        and return_tuple['route'][i+1].get("bearing"):
+                    bearing_of_next_route_segment = return_tuple['route'][i+1].get("bearing")
+                # walk through the intersection segment list
+                for index, intersection_segment in enumerate(intersection.get("way_list")):
+                    if bearing_of_previous_route_segment:
+                        bearing_difference_previous = geometry.bearing_difference_between_two_segments(
+                                (bearing_of_previous_route_segment + 180) % 360,
+                                intersection_segment.get("bearing"))
+                        if bearing_difference_previous < minimal_bearing_difference_previous:
+                            minimal_bearing_difference_previous = bearing_difference_previous
+                            index_of_previous = index
+                    if bearing_of_next_route_segment:
+                        bearing_difference_next = geometry.bearing_difference_between_two_segments(
+                                bearing_of_next_route_segment,
+                                intersection_segment.get("bearing"))
+                        if bearing_difference_next < minimal_bearing_difference_next:
+                            minimal_bearing_difference_next = bearing_difference_next
+                            index_of_next = index
+                # set values if available and reset in route
+                if index_of_previous > -1:
+                    intersection['way_list'][index_of_previous]['part_of_previous_route_segment'] = True
+                if index_of_next > -1:
+                    intersection['way_list'][index_of_next]['part_of_next_route_segment'] = True
+                return_tuple['route'][i] = intersection
+
+        # add route description
         return_tuple['description'] = rfc.get_route_description( return_tuple['route'] )
+        # logging
         route_logger.append_to_log("\n----- start of result route -----")
         route_logger.append_to_log( json.dumps( return_tuple['route'], indent=4, encoding="utf-8") \
                 + "\n----- end of result route -----\n")
-
         # delete session id
         Config().confirm_removement_of_session_id(session_id)
         # convert return_tuple to json and zip it, before returning

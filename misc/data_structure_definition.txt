@@ -138,10 +138,12 @@ footway:                        extends from segment
                                 [width >= 0.0, default: unknown = -1.0]
 
 intersection_segment:           extends from footway
-* type:                     "footway_intersection"
-* intersection_name:        String
-+ next_node_id:             Long            Next node id from osm database
-                                [next_node_id >= 0, default: unknown = -1]
+* type:                         "footway_intersection"
+* intersection_name:            String
++ next_node_id:                 Long            Next node id from osm database
+                                    [next_node_id >= 0, default: unknown = -1]
++ part_of_previous_route_segment    Boolean         part of the previous route segment
++ part_of_next_route_segment    Boolean         part of the next route segment
 
 route_segment:                  extends from footway
 * type:                     "footway_route"
