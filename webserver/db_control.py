@@ -5,8 +5,8 @@ import psycopg2
 import psycopg2.extras
 import sys
 
-from config import Config
-import constants
+from . import constants
+from .config import Config
 
 
 class DBControl():
@@ -46,11 +46,11 @@ class DBControl():
             cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
             cursor.execute(query)
             rows = cursor.fetchall()
-        except psycopg2.DatabaseError, e:
+        except psycopg2.DatabaseError as e:
             if e.__str__().strip().endswith("vertex was not found.") == True:
                 rows = []
             else:
-                print e
+                print(e)
                 raise
         finally:
             if con:
@@ -66,8 +66,8 @@ class DBControl():
             cur = con.cursor()
             cur.execute(query)
             con.commit()
-        except psycopg2.DatabaseError, e:
-            print e
+        except psycopg2.DatabaseError as e:
+            print(e)
             if con:
                 con.rollback()
             sys.exit(1)

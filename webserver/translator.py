@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 import textwrap
-from config import Config
+from .config import Config
+
 
 class Translator:
 

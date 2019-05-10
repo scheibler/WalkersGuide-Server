@@ -3,6 +3,7 @@
 
 import os, string, datetime
 
+
 class WGLogger:
     def __init__(self, basic_folder, file_name, logging_allowed):
         valid_chars = "-_.%s%s" % (string.ascii_letters, string.digits)
@@ -35,5 +36,5 @@ class WGLogger:
                 log_file.write("%s\n" % data)
             # print on stdout (optional)
             if print_on_screen:
-                print data
+                print(data)
 

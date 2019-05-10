@@ -1,9 +1,11 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-from config import Config
-import geometry
 import math, time
+
+from . import geometry
+from .config import Config
+
 
 class POI:
 
@@ -86,7 +88,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print("intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
         # stations
         if tags['station'] != "":
@@ -134,7 +136,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print("station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
         # poi
         if tags['poi'] != "":
@@ -168,7 +170,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print("poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
         # entrances
         if tags['entrance'] != "":
@@ -197,7 +199,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "entrances gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print("entrances gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
         # pedestrian crossings
         if tags['pedestrian_crossings'] != "":
@@ -226,7 +228,7 @@ class POI:
                     return
             t3 = time.time()
             if self.hide_log_messages == False:
-                print "pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2))
+                print("pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
         # filter out entries above given radius
         thrown_away = 0
@@ -240,7 +242,7 @@ class POI:
 
         te = time.time()
         if self.hide_log_messages == False:
-            print "gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), poi_list.__len__())
+            print("gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), len(poi_list)))
         return filtered_poi_list
 
 
@@ -359,7 +361,7 @@ class POI:
             return point
         point['type'] = "point"
         point['sub_type'] = self.translator.translate("poi", "way_point")
-        if tags.has_key("name"):
+        if "name" in tags:
             point['name'] = tags['name']
         else:
             point['name'] = point['sub_type']
@@ -367,14 +369,14 @@ class POI:
         point['lon'] = lon
         # optional attributes
         point['node_id'] = osm_node_id
-        if tags.has_key("tactile_paving"):
+        if "tactile_paving" in tags:
             if tags['tactile_paving'] == "no":
                 point['tactile_paving'] = 0
             elif tags['tactile_paving'] in ["contrasted", "primitive", "yes"]:
                 point['tactile_paving'] = 1
             elif tags['tactile_paving'] == "incorrect":
                 point['tactile_paving'] = 2
-        if tags.has_key("wheelchair"):
+        if "wheelchair" in tags:
             if tags['wheelchair'] == "no":
                 point['wheelchair'] = 0
             elif tags['wheelchair'] == "limited":
@@ -400,45 +402,45 @@ class POI:
             return segment
         # type and subtype
         segment['type'] = "footway"
-        if tags.has_key("highway"):
+        if "highway" in tags:
             segment['sub_type'] = self.translator.translate("highway", tags['highway'])
-            if tags.has_key("railway") and tags['railway'] == "tram":
+            if "railway" in tags and tags['railway'] == "tram":
                 segment['tram'] = 1
             else:
                 segment['tram'] = 0
-        elif tags.has_key("railway"):
+        elif "railway" in tags:
             segment['sub_type'] = self.translator.translate("railway", tags['railway'])
         else:
             segment['sub_type'] = "unknown"
         # name
-        if tags.has_key("name"):
+        if "name" in tags:
             segment['name'] = tags['name']
-        elif tags.has_key("surface"):
+        elif "surface" in tags:
             segment['name'] = "%s (%s)" % (segment['sub_type'], tags['surface'])
-        elif tags.has_key("tracktype"):
+        elif "tracktype" in tags:
             segment['name'] = "%s (%s)" % (segment['sub_type'], tags['tracktype'])
         else:
             segment['name'] = segment['sub_type']
         # optional attributes
-        if tags.has_key("description"):
+        if "description" in tags:
             segment['description'] = tags['description']
-        if tags.has_key("lanes"):
+        if "lanes" in tags:
             try:
                 segment['lanes'] = int(tags['lanes'])
             except ValueError as e:
                 pass
-        if tags.has_key("maxspeed"):
+        if "maxspeed" in tags:
             try:
                 segment['maxspeed'] = int(tags['maxspeed'])
             except ValueError as e:
                 pass
         segment['pois'] = []
-        if tags.has_key("segregated"):
+        if "segregated" in tags:
             if tags['segregated'] == "yes":
                 segment['segregated'] = 1
             else:
                 segment['segregated'] = 0
-        if tags.has_key("sidewalk"):
+        if "sidewalk" in tags:
             if tags['sidewalk'] == "no" or tags['sidewalk'] == "none":
                 segment['sidewalk'] = 0
             elif tags['sidewalk'] == "left":
@@ -453,11 +455,11 @@ class POI:
                     segment['sidewalk'] = 1
             elif tags['sidewalk'] == "both":
                 segment['sidewalk'] = 3
-        if tags.has_key("smoothness"):
+        if "smoothness" in tags:
             segment['smoothness'] = self.translator.translate("smoothness", tags['smoothness'])
-        if tags.has_key("surface"):
+        if "surface" in tags:
             segment['surface'] = self.translator.translate("surface", tags['surface'])
-        if tags.has_key("tactile_paving"):
+        if "tactile_paving" in tags:
             if tags['tactile_paving'] == "no":
                 segment['tactile_paving'] = 0
             elif tags['tactile_paving'] in ["contrasted", "primitive", "yes"]:
@@ -465,14 +467,14 @@ class POI:
             elif tags['tactile_paving'] == "incorrect":
                 segment['tactile_paving'] = 2
         segment['way_id'] = osm_way_id
-        if tags.has_key("wheelchair"):
+        if "wheelchair" in tags:
             if tags['wheelchair'] == "no":
                 segment['wheelchair'] = 0
             elif tags['wheelchair'] == "limited":
                 segment['wheelchair'] = 1
             elif tags['wheelchair'] == "yes":
                 segment['wheelchair'] = 2
-        if tags.has_key("width"):
+        if "width" in tags:
             try:
                 segment['width'] = float(tags['width'])
             except ValueError as e:
@@ -517,11 +519,11 @@ class POI:
 
         # type and subtype
         intersection['type'] = "intersection"
-        if tags.has_key("highway") and tags['highway'] == "mini_roundabout":
+        if "highway" in tags and tags['highway'] == "mini_roundabout":
             intersection['sub_type'] = self.translator.translate("highway", "roundabout")
-        elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
+        elif "highway" in tags and tags['highway'] == "traffic_signals":
             intersection['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif tags.has_key("railway") and tags['railway'] == "crossing":
+        elif "railway" in tags and tags['railway'] == "crossing":
             intersection['sub_type'] = self.translator.translate("railway", "crossing")
         else:
             intersection['sub_type'] = self.translator.translate("highway", "crossing")
@@ -610,14 +612,14 @@ class POI:
         crossing['type'] = "pedestrian_crossing"
 
         # sub type
-        if tags.has_key("crossing"):
+        if "crossing" in tags:
             crossing['sub_type'] = self.translator.translate("crossing", tags['crossing'])
-        elif tags.has_key("highway") and tags['highway'] == "crossing" \
-                and tags.has_key("crossing_ref") and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
+        elif "highway" in tags and tags['highway'] == "crossing" \
+                and "crossing_ref" in tags and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
             crossing['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
-        elif tags.has_key("highway") and tags['highway'] == "traffic_signals":
+        elif "highway" in tags and tags['highway'] == "traffic_signals":
             crossing['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif tags.has_key("railway") and tags['railway'] == "crossing":
+        elif "railway" in tags and tags['railway'] == "crossing":
             crossing['sub_type'] = self.translator.translate("railway", "crossing")
         else:
             crossing['sub_type'] = self.translator.translate("crossing", "unknown")
@@ -629,12 +631,12 @@ class POI:
             crossing['name'] = crossing['sub_type']
 
         # traffic signals attributes
-        if tags.has_key("traffic_signals:sound"):
+        if "traffic_signals:sound" in tags:
             if tags['traffic_signals:sound'] == "no":
                 crossing['traffic_signals_sound'] = 0
             elif tags['traffic_signals:sound'] in ["locate", "walk", "yes"]:
                 crossing['traffic_signals_sound'] = 1
-        if tags.has_key("traffic_signals:vibration"):
+        if "traffic_signals:vibration" in tags:
             if tags['traffic_signals:vibration'] == "no":
                 crossing['traffic_signals_vibration'] = 0
             elif tags['traffic_signals:vibration'] == "yes":
@@ -663,72 +665,72 @@ class POI:
         # type and subtype
         poi['type'] = "poi"
         poi['sub_type'] = ""
-        if tags.has_key("amenity"):
-            if tags.has_key("cuisine"):
+        if "amenity" in tags:
+            if "cuisine" in tags:
                 poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
                         self.translator.translate("cuisine", tags['cuisine']))
-            elif tags.has_key("vending"):
+            elif "vending" in tags:
                 poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
                         self.translator.translate("vending", tags['vending']))
             else:
                 poi['sub_type'] = self.translator.translate("amenity", tags['amenity'])
-        elif tags.has_key("bridge"):
+        elif "bridge" in tags:
             poi['sub_type'] = self.translator.translate("bridge", tags['bridge'])
-        elif tags.has_key("tourism"):
+        elif "tourism" in tags:
             poi['sub_type'] = self.translator.translate("tourism", tags['tourism'])
-        elif tags.has_key("historic"):
+        elif "historic" in tags:
             poi['sub_type'] = self.translator.translate("historic", tags['historic'])
-        elif tags.has_key("leisure"):
-            if tags.has_key("sport"):
+        elif "leisure" in tags:
+            if "sport" in tags:
                 poi['sub_type'] = "%s (%s)" % (self.translator.translate("leisure", tags['leisure']),
                         self.translator.translate("sport", tags['sport']))
             else:
                 poi['sub_type'] = self.translator.translate("leisure", tags['leisure'])
-        elif tags.has_key("man_made"):
+        elif "man_made" in tags:
             poi['sub_type'] = self.translator.translate("man_made", tags['man_made'])
-        elif tags.has_key("natural"):
+        elif "natural" in tags:
             poi['sub_type'] = self.translator.translate("natural", tags['natural'])
-        elif tags.has_key("shop"):
+        elif "shop" in tags:
             poi['sub_type'] = self.translator.translate("shop", tags['shop'])
-        elif tags.has_key("aeroway"):
+        elif "aeroway" in tags:
             poi['sub_type'] = self.translator.translate("aeroway", tags['aeroway'])
-        elif tags.has_key("building"):
+        elif "building" in tags:
             if tags['building'] == "yes":
                 poi['sub_type'] = self.translator.translate("building", "building")
             else:
                 poi['sub_type'] = self.translator.translate("building", tags['building'])
-        elif poi.has_key("display_name") == True:
+        elif "display_name" in poi:
             poi['type'] = "street_address"
             poi['sub_type'] = self.translator.translate("poi", "address")
 
         # name
-        if tags.has_key("name"):
+        if "name" in tags:
             poi['name'] = tags['name']
-        elif tags.has_key("description"):
+        elif "description" in tags:
             poi['name'] = tags['description']
-        elif tags.has_key("operator"):
+        elif "operator" in tags:
             poi['name'] = tags['operator']
-        elif tags.has_key("ref"):
+        elif "ref" in tags:
             poi['name'] += " (%s)" % tags['ref']
-        elif poi.has_key("display_name"):
+        elif "display_name" in poi:
             poi['name'] = poi['display_name']
         else:
             poi['name'] = poi['sub_type']
 
         # contact
-        if tags.has_key("contact:website"):
+        if "contact:website" in tags:
             poi['website'] = tags['contact:website']
-        elif tags.has_key("website"):
+        elif "website" in tags:
             poi['website'] = tags['website']
-        if tags.has_key("contact:email"):
+        if "contact:email" in tags:
             poi['email'] = tags['contact:email']
-        elif tags.has_key("email"):
+        elif "email" in tags:
             poi['email'] = tags['email']
-        if tags.has_key("contact:phone"):
+        if "contact:phone" in tags:
             poi['phone'] = tags['contact:phone']
-        elif tags.has_key("phone"):
+        elif "phone" in tags:
             poi['phone'] = tags['phone']
-        if tags.has_key("opening_hours"):
+        if "opening_hours" in tags:
             poi['opening_hours'] = tags['opening_hours']
 
         # outer building
@@ -774,47 +776,47 @@ class POI:
         station['type'] = "station"
         station['sub_type'] = self.translator.translate("public_transport", "unknown")
         station['vehicles'] = []
-        if tags.has_key("highway") and tags['highway'] == "bus_stop":
+        if "highway" in tags and tags['highway'] == "bus_stop":
             if "bus" not in station['vehicles']:
                 station['vehicles'].append("bus")
-        if tags.has_key("railway") and tags['railway'] == "tram_stop":
+        if "railway" in tags and tags['railway'] == "tram_stop":
             if "tram" not in station['vehicles']:
                 station['vehicles'].append("tram")
-        if tags.has_key("train") and tags['train'] == "yes":
+        if "train" in tags and tags['train'] == "yes":
             if "train" not in station['vehicles']:
                 station['vehicles'].append("train")
-        if tags.has_key("subway") and tags['subway'] == "yes":
+        if "subway" in tags and tags['subway'] == "yes":
             if "subway" not in station['vehicles']:
                 station['vehicles'].append("subway")
-        if tags.has_key("monorail") and tags['monorail'] == "yes":
+        if "monorail" in tags and tags['monorail'] == "yes":
             if "monorail" not in station['vehicles']:
                 station['vehicles'].append("monorail")
-        if tags.has_key("light_rail") and tags['light_rail'] == "yes":
+        if "light_rail" in tags and tags['light_rail'] == "yes":
             if "light_rail" not in station['vehicles']:
                 station['vehicles'].append("light_rail")
-        if tags.has_key("bus") and tags['bus'] == "yes":
+        if "bus" in tags and tags['bus'] == "yes":
             if "bus" not in station['vehicles']:
                 station['vehicles'].append("bus")
-        if tags.has_key("tram") and tags['tram'] == "yes":
+        if "tram" in tags and tags['tram'] == "yes":
             if "tram" not in station['vehicles']:
                 station['vehicles'].append("tram")
-        if tags.has_key("aerialway") and tags['aerialway'] == "yes":
+        if "aerialway" in tags and tags['aerialway'] == "yes":
             if "aerialway" not in station['vehicles']:
                 station['vehicles'].append("aerialway")
-        if tags.has_key("ferry") and tags['ferry'] == "yes":
+        if "ferry" in tags and tags['ferry'] == "yes":
             if "ferry" not in station['vehicles']:
                 station['vehicles'].append("ferry")
-        if tags.has_key("railway") and (tags['railway'] == "station" or tags['railway'] == "halt"):
-            if tags.has_key("station") and tags['station'] == "subway":
+        if "railway" in tags and (tags['railway'] == "station" or tags['railway'] == "halt"):
+            if "station" in tags and tags['station'] == "subway":
                 if "subway" not in station['vehicles']:
                     station['vehicles'].append("subway")
-            elif tags.has_key("station") and tags['station'] == "light_rail":
+            elif "station" in tags and tags['station'] == "light_rail":
                 if "light_rail" not in station['vehicles']:
                     station['vehicles'].append("light_rail")
             else:
-                if station['vehicles'].__len__() == 0:
+                if len(station['vehicles']) == 0:
                     station['vehicles'].append("train")
-        if station['vehicles'].__len__() > 0:
+        if len(station['vehicles']) > 0:
             station['sub_type'] = ""
             for vehicle in station['vehicles']:
                 station['sub_type'] += "%s, " % self.translator.translate("public_transport", vehicle)
@@ -827,10 +829,10 @@ class POI:
             result = self.selected_db.fetch_data("SELECT DISTINCT line, direction, type \
                     from transport_lines where poi_id = %d ORDER BY type" % station_id)
             for row in result:
-                if not row.has_key("line"):
+                if "line" not in row:
                     continue
                 line = {"nr":row['line'], "to":""}
-                if row.has_key("direction") and row['direction'] != None:
+                if "direction" in row and row['direction'] != None:
                     line['to'] = row['direction']
                 station['lines'].append(line)
         return station
@@ -846,7 +848,7 @@ class POI:
         hstore_string = hstore_string[1:hstore_string.__len__()-1]
         for entry in hstore_string.split("\", \""):
             keyvalue = entry.split("\"=>\"")
-            if keyvalue.__len__() != 2:
+            if len(keyvalue) != 2:
                 continue
             hstore[keyvalue[0]] = keyvalue[1]
         return hstore
@@ -1088,17 +1090,19 @@ class POI:
 
 
     def insert_into_poi_list(self, poi_list, entry, lat, lon):
-        if entry == {} or entry.has_key("name") == False \
-                or entry.has_key("lat") == False or entry.has_key("lon") == False:
+        if not entry \
+                or "name" not in entry \
+                or "lat" not in entry \
+                or "lon" not in entry:
             return poi_list
         entry['distance'] = geometry.distance_between_two_points(lat, lon, entry['lat'], entry['lon'])
         entry['bearing'] = geometry.bearing_between_two_points(lat, lon, entry['lat'], entry['lon'])
         # add in pois list sorted by distance
-        if poi_list.__len__() == 0:
+        if len(poi_list) == 0:
             poi_list.append(entry)
         else:
             inserted = False
-            for index in range(0, poi_list.__len__()):
+            for index in range(0, len(poi_list)):
                 if entry['distance'] < poi_list[index]['distance']:
                     poi_list.insert(index, entry)
                     inserted = True

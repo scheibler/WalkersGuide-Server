@@ -10,8 +10,8 @@ import os
 import sys
 import time
 
-import constants
-from helper import exit
+from . import constants
+from .helper import exit
 
 
 class Config:
