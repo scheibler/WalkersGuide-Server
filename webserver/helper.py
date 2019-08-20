@@ -3,11 +3,10 @@
 
 # some small helper functions
 
+import logging, logging.handlers
 import gzip
 import json
 import sys
-
-from subprocess import Popen, PIPE, STDOUT
 
 
 def exit(message, prefix="Error in config file\n"):
@@ -29,10 +28,42 @@ def zip_data(data):
             bytes(json.dumps(data), 'utf-8'))
 
 
-def send_email(recipient, subject, body):
-    send_email_process= Popen(
-            ["mail", "-s", subject, recipient],
-            stdin=PIPE, stdout=PIPE, stderr=STDOUT)
-    send_email_process.communicate(input=bytes(body, encoding='utf8'))
-    return send_email_process.wait()
+def send_email(subject, body):
+    logger = logging.getLogger('email')
+    logger.info(body, extra = {'email_subject' : subject})
+
+
+class CustomSubjectSMTPHandler(logging.handlers.SMTPHandler):
+    def getSubject(self, record):
+        formatter = logging.Formatter(fmt=self.subject)
+        return formatter.format(record)
+
+
+class TTYLogFormatter(logging.Formatter):
+    CHERRYPY_ACCESS = '[ACCESS] %(message)s'
+    CHERRYPY_ERROR  = '[CHERRYPY] %(message)s'
+    EMAIL   = '[Email] %(email_subject)s'
+    DEFAULT = '[%(levelname)s] [%(filename)s, %(funcName)s, Line %(lineno)s] [%(asctime)s]\n%(message)s'
+    def format(self, record):
+        if record.name.startswith('cherrypy.access'):
+            formatter = logging.Formatter(self.CHERRYPY_ACCESS)
+        elif record.name.startswith('cherrypy.error'):
+            formatter = logging.Formatter(self.CHERRYPY_ERROR)
+        elif record.name == 'email':
+            formatter = logging.Formatter(self.EMAIL)
+        else:
+            formatter = logging.Formatter(self.DEFAULT)
+        return formatter.format(record)
+
+
+class WebserverException(Exception):
+    def __init__(self, return_code, message=None):
+        self.return_code = return_code
+        self.message = message
+    def __str__(self):
+        if self.message:
+            return repr(
+                    'rc={}, msg={}'.format(self.return_code, self.message))
+        return repr(
+                'rc={}'.format(self.return_code))
 

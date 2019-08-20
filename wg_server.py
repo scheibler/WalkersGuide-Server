@@ -54,7 +54,6 @@ def create_map_database(map_id):
     shell_config += ['db_routing_table="%s"' % Config().database.get("routing_table")]
     shell_config += ['db_map_info="%s"' % Config().database.get("map_info")]
     shell_config += ['db_map_version=%s' % supported_map_version_list[-1]]
-    shell_config += ['db_way_class_weights="%s"' % Config().database.get("way_class_weights")]
     shell_config += ['export PGPASSWORD=$password']
     # Java options
     shell_config += ['\n# Java options']
@@ -72,12 +71,10 @@ def create_map_database(map_id):
     # create map database
     # log file
     date = datetime.datetime.now()
-    log_folder = os.path.join(
-            Config().paths.get("maps_log_folder"), "%04d" % date.year, "%02d" % date.month)
-    if not os.path.exists(log_folder):
-        os.makedirs(log_folder)
-    log_file = os.path.join(log_folder, "%04d-%02d-%02d_%02d-%02d-%02d.create.%s.log" \
-            % (date.year, date.month, date.day, date.hour, date.minute, date.second, map_id))
+    log_file = os.path.join(
+            Config().paths.get("maps_log_folder"),
+            "%04d-%02d-%02d_%02d-%02d-%02d.create.%s.log" % (date.year,
+                date.month, date.day, date.hour, date.minute, date.second, map_id))
     # start map creation shell script
     with open(log_file,"wb") as out:
         map_creation_process= Popen(
@@ -92,7 +89,7 @@ def create_map_database(map_id):
     # body
     with open(log_file, "r") as lf:
         email_body = lf.read()
-    send_email(Config().status_email, email_subject, email_body)
+    send_email(email_subject, email_body)
     os.remove(Config().paths.get("shell_lock_file"))
 
 
@@ -101,6 +98,8 @@ def start_public_transport_library():
     gateway_port = Config().java.get("gateway_port")
     if not os.path.exists(executable):
         exit("Public transport library executable %s not available" % executable, prefix="")
+    elif gateway_port == 0:
+        exit("Public transport library gateway port not available", prefix="")
     else:
         child = Popen(["java", "-jar", executable, str(gateway_port)])
         child.communicate()

@@ -97,23 +97,3 @@ def get_boundary_box(lat, lon, radius):
             lat, lon, lat, lon+1.0)
     return {'bottom':lat-lat_diff, 'top':lat+lat_diff, 'left':lon-lon_diff, 'right':lon+lon_diff}
 
-
-def convert_coordinate_to_float(coordinate):
-    if type(coordinate) == type(0.0):
-        return coordinate
-    try:
-        coordinate = int(coordinate)
-        divisor = 1000000
-        return float(coordinate) / divisor
-    except ValueError as e:
-        return None
-
-
-def convert_coordinate_to_int(coordinate):
-    if type(coordinate) == type(0):
-        return coordinate
-    try:
-        return int(coordinate*1000000)
-    except ValueError as e:
-        return None
-

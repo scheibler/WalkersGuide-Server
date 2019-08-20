@@ -2,11 +2,15 @@ Data structure definition for points and routes
 ===============================================
 
 
+
 General
 -------
 
 *: attribute is mandatory
 +: attribute is optional
+
+WalkersGuide-Server version 1.2.0
+
 
 
 Points
@@ -89,8 +93,6 @@ station:                        extends from poi
 + vehicles:                     list<string>    list of vehicles for this station
 + station_id                    Long            station id from deutsche bahn api
                                 [station_id >= 0, default: unknown = -1]
-+ exact_position:               Boolean         only for routes
-+ platform_number:              String          only for routes
 
 Departure:
 * nr:           String      line number
@@ -100,6 +102,7 @@ Departure:
 line:
 * nr:       String      line number
 + to:       String      direction
+
 
 
 Way segments
@@ -150,14 +153,15 @@ route_segment:                  extends from footway
 * distance:         Integer         Distance of the segment between two route points
                     [distance >= 0, default: unknown = -1]
 
-transport:                      extends from segment
-* type:                             "transport"
-* line:                             String
-* direction:                        String
-* departure_time:                   String
-* departure_time_millis:            Long
-* arrival_time:                     String
-* arrival_time_millis:              Long
-* duration:                         String
-+ stops:                            list<String>
+
+
+Other
+-----
+
+Map:
+* name: String
+* description: String
+* created: Long
+* urls: String
+* version: Integer
 

@@ -2,13 +2,18 @@
 # -*- coding: utf-8 -*-
 
 import textwrap
+from . import constants, geometry, helper
 from .config import Config
 
 
 class Translator:
 
     def __init__(self, language=Config().default_language):
-        self.language = language
+        if language in constants.supported_language_list:
+            self.language = language
+        else:
+            self.language = Config().default_language
+
 
     def translate(self, category, tag):
         if self.language == "de":
@@ -17,8 +22,11 @@ class Translator:
             translation = self.translate_to_english(category, tag)
         return translation
 
+
     def translate_to_german(self, category, tag):
         if category == "message":
+            if tag == "map_not_available_or_incompatible": return "Karte ist nicht verfügbar oder inkompatibel"
+            if tag == "database_error": return "Fehler bei der Datenbankabfrage"
             if tag == "no_route_options": return "Keine Routenoptionen übermittelt"
             if tag == "no_route_factor_option": return "Der Faktor für die Berechnung des Umweges fehlt"
             if tag == "no_session_id_option": return "Die Session Id fehlt"
@@ -34,6 +42,7 @@ class Translator:
             if tag == "no_way_id": return "Keine Weg-Id übermittelt"
             if tag == "no_node_id": return "Keine Node-Id übermittelt"
             if tag == "no_next_node_id": return "Keine Next-Node-Id übermittelt"
+            if tag == "node_id_invalid": return "Die übermittelte Wegpunkt-Id ist ungültig"
             if tag == "way_id_invalid": return "Die übermittelte Weg-Id ist ungültig"
             if tag == "source_route_no_transport_parts": return "Der Route fehlt ein, per ÖPNV zurückzulegender Routenabschnitt"
             if tag == "source_route_multiple_transport_parts": return "Die Route beinhaltet mehr als einen, per ÖPNV zurückzulegenden Routenabschnitt"
@@ -52,19 +61,9 @@ class Translator:
             if tag == "process_canceled": return "Prozess abgebrochen"
 
         if category == "footway_creator":
-            if tag == "foot_route_creation_failed": return "Die Fußgängerroute konnte nicht erstellt werden."
-            if tag == "foot_route_creation_failed_max_distance":
-                return "Die Fußgängerroute konnte nicht erstellt werden. " \
-                        "Maximale Entfernung zwischen Start und Ziel überschritten."
-            if tag == "foot_route_creation_failed_way_classes_missing":
-                return "Die Fußgängerroute konnte nicht erstellt werden. " \
-                        "Aktivieren sie weitere Wegklassen und versuchen Sie es erneut."
-            if tag == "foot_route_creation_failed_no_existing_way":
-                return "Die Fußgängerroute konnte nicht erstellt werden. " \
-                        "Zwischen dem Start- und dem Zielpunkt existiert keine Route."
-            if tag == "direct_connection": return "Luftlinie zwischen Start und Ziel"
             if tag == "first_segment": return "Namenloses Wegsegment"
             if tag == "last_segment": return "Namenloses Wegsegment"
+            if tag == "via_point_label": return "Zwischenziel %d: %s"
             if tag == "route_description_without_transport": return textwrap.dedent("""\
                     Die Route ist %d Meter lang und besteht aus %d Kreuzungen.""")
             if tag == "route_description_with_single_transport": return textwrap.dedent("""\
@@ -631,8 +630,11 @@ class Translator:
             if tag == "weir": return "Wehr"
         return tag
 
+
     def translate_to_english(self, category, tag):
         if category == "message":
+            if tag == "map_not_available_or_incompatible": return "Map is not available or incompatible"
+            if tag == "database_error": return "Error during database access"
             if tag == "no_route_options": return "No route options transmitted"
             if tag == "no_route_factor_option": return "The factor for the route indirection calculation is missing"
             if tag == "no_session_id_option": return "Missing session id"
@@ -648,6 +650,7 @@ class Translator:
             if tag == "no_way_id": return "No Way-Id transmitted"
             if tag == "no_node_id": return "No node id transmitted"
             if tag == "no_next_node_id": return "No next node id transmitted"
+            if tag == "node_id_invalid": return "The transmitted Waypoint-Id is invalid"
             if tag == "way_id_invalid": return "The transmitted Way-Id is invalid"
             if tag == "source_route_no_transport_parts": return "The transmitted route lacks a public transport segment"
             if tag == "source_route_multiple_transport_parts": return "The transmitted route consists of multiple public transport segments"
@@ -666,19 +669,9 @@ class Translator:
             if tag == "process_canceled": return "Process canceled"
 
         if category == "footway_creator":
-            if tag == "foot_route_creation_failed": return "The footway route could not be created."
-            if tag == "foot_route_creation_failed_max_distance":
-                return "The footway route could not be created. " \
-                        "Maximal distance between start and destination exceeded."
-            if tag == "foot_route_creation_failed_way_classes_missing":
-                return "The footway route could not be created. " \
-                        "Please activate additional way classes and try again."
-            if tag == "foot_route_creation_failed_no_existing_way":
-                return "The footway route could not be created. " \
-                        "Found no way between the start and destination point."
-            if tag == "direct_connection": return "Beeline between start and destination"
             if tag == "first_segment": return "Nameless route segment"
             if tag == "last_segment": return "Nameless route segment"
+            if tag == "via_point_label": return "Via point %d, %s"
             if tag == "route_description_without_transport": return textwrap.dedent("""\
                 The total length of the route is %d meters and it consists of %d intersections""")
             if tag == "route_description_with_single_transport": return textwrap.dedent("""\

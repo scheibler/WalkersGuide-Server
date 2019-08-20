@@ -1,15 +1,15 @@
 apply plugin: 'java'
 
 dependencies {
-    compile 'com.squareup.okhttp3:okhttp:3.5.0'
-    compile 'com.squareup.okhttp3:logging-interceptor:3.5.0'
-    compile 'com.google.guava:guava:20.0'
-    compile 'org.slf4j:slf4j-api:1.7.21'
-    compile 'com.google.code.findbugs:jsr305:3.0.0'
+    compile 'com.squareup.okhttp3:okhttp:3.12.2'
+    compile 'com.squareup.okhttp3:logging-interceptor:3.12.2'
+    compile 'com.google.guava:guava:27.1-android'
+
+    compile 'org.slf4j:slf4j-api:1.7.25'
     compile 'org.json:json:20090211' // provided by Android
     compile 'net.sf.kxml:kxml2:2.3.0' // provided by Android
-    compile 'net.sf.py4j:py4j:0.8.1'
-    compile files('libs/public-transport-enabler-release-2017-03-26.jar')
+    compile 'net.sf.py4j:py4j:0.10.8.1'
+    compile files('libs/public-transport-enabler-release-2019-06-12.jar')
 }
 
 repositories {

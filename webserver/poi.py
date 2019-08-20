@@ -1,81 +1,208 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import math, time
+import logging, math, time
+from psycopg2 import sql
 
-from . import geometry
+from . import constants, geometry
 from .config import Config
+from .constants import ReturnCode
+from .db_control import DBControl
+from .helper import WebserverException
+from .translator import Translator 
 
 
 class POI:
 
-    def __init__(self, db, session_id, translator_object, hide_log_messages=False):
-        self.selected_db = db
+    def __init__(self, map_id, session_id, user_language):
+        self.selected_db = DBControl(map_id)
         self.session_id = session_id
-        self.translator = translator_object
-        self.hide_log_messages = hide_log_messages
+        self.translator = Translator(user_language)
 
 
-    def get_poi(self, lat, lon, radius, number_of_results, tag_list, search=""):
+    def get_poi(self, lat, lon, radius, number_of_results, tags, search):
         ts = time.time()
         poi_list = []
+        where_clause_param_dict = {}
 
-        # tags, boundary box and search strings
-        tags = self.create_tags(tag_list)
-        boundaries = geometry.get_boundary_box(lat, lon, radius)
-        if search != "":
-            # prepare search strings
-            search = search.replace(" ", "%").lower()
-            # entrances, intersections and crossings
-            search_entrances = "LOWER(label) LIKE '%%%s%%'" % search
-            search_intersections = "LOWER(name) LIKE '%%%s%%'" % search
-            search_pedestrian_crossings = "LOWER(crossing_street_name) LIKE '%%%s%%'" % search
-            # poi
-            search_poi = "("
-            search_poi += "LOWER(tags->'name') LIKE '%%%s%%' or " % search
-            search_poi += "LOWER(tags->'amenity') LIKE '%%%s%%' or " % search
-            search_poi += "LOWER(tags->'cuisine') LIKE '%%%s%%' or " % search
-            search_poi += "LOWER(tags->'addr:street') LIKE '%%%s%%' or " % search
-            search_poi += "LOWER(tags->'street') LIKE '%%%s%%'" % search
-            search_poi += ")"
-            # stations
-            search_stations = "("
-            search_stations += "LOWER(tags->'name') LIKE '%%%s%%'" % search
-            search_stations += ")"
+        # check params
+        # latitude
+        try:
+            if lat < -180 or lat > 180:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Latitude out of range")
+        except TypeError as e:
+            if lat:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid latitude")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No latitude")
+        # longitude
+        try:
+            if lon < -180 or lon > 180:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "longitude out of range")
+        except TypeError as e:
+            if lon:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid longitude")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No longitude")
+        # radius
+        try:
+            if radius <= 0:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "radius <= 0")
+        except TypeError as e:
+            if radius:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid radius")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No radius")
+        # number_of_results
+        try:
+            if number_of_results <= 0:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "number_of_results <= 0")
+        except TypeError as e:
+            if number_of_results:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid number_of_results")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No number_of_results")
+        # tags
+        if not tags:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "No tags")
+        elif not isinstance(tags, list):
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "Invalid tags")
         else:
-            search_entrances = ""
-            search_intersections = ""
-            search_pedestrian_crossings = ""
-            search_poi = ""
-            search_stations = ""
+            tag_list = []
+            for tag in tags:
+                if tag in constants.supported_poi_category_listp:
+                    tag_list.append(tag)
+                else:
+                    logging.warning("Skipping poi tag {}".format(tag))
+            if not tag_list:
+                raise WebserverException(
+                        ReturnCode.NO_POI_TAGS_SELECTED, "tag_list is empty")
+        # search
+        if not search:
+            search = ""
+        elif not isinstance(search, str):
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "Invalid search")
 
+        # create boundary box
+        # sql query
+        boundary_box_query = sql.SQL(
+                """
+                geom && ST_MakeEnvelope(
+                        {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
+                """
+                ).format(
+                        p_boundaries_left=sql.Placeholder(name='boundaries_left'),
+                        p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
+                        p_boundaries_right=sql.Placeholder(name='boundaries_right'),
+                        p_boundaries_top=sql.Placeholder(name='boundaries_top'))
+        # params
+        boundaries = geometry.get_boundary_box(lat, lon, radius)
+        where_clause_param_dict['boundaries_left'] = boundaries['left']
+        where_clause_param_dict['boundaries_bottom'] = boundaries['bottom']
+        where_clause_param_dict['boundaries_right'] = boundaries['right']
+        where_clause_param_dict['boundaries_top'] = boundaries['top']
+
+        # lat/lon inside selected map?
+        try:
+            self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT * FROM {i_table_name} WHERE {c_boundary_box_query} LIMIT 1
+                        """
+                        ).format(
+                            i_table_name=sql.Identifier("nodes"),
+                            c_boundary_box_query=boundary_box_query),
+                        where_clause_param_dict)
+        except DBControl.DatabaseResultEmptyError as e:
+            raise WebserverException(ReturnCode.WRONG_MAP_SELECTED)
+
+        # search term
+        # sql query: see customized queries below
+        # param
+        if search:
+            where_clause_param_dict['search_term'] = '%{}%'.format(
+                    search.replace(" ", "%").lower())
+        else:
+            where_clause_param_dict['search_term'] = ""
+
+        # order by lat/lon and limit to number of results
+        # sql query
+        order_by_and_limit_query = sql.SQL(
+                """
+                ORDER BY ST_Distance(geom::geography, 'POINT({p_lon} {p_lat})'::geography)
+                LIMIT {p_number_of_results}
+                """
+                ).format(
+                        p_lon=sql.Placeholder(name='lon'),
+                        p_lat=sql.Placeholder(name='lat'),
+                        p_number_of_results=sql.Placeholder(name='number_of_results'))
+        # params
+        where_clause_param_dict['lon'] = lon
+        where_clause_param_dict['lat'] = lat
+        where_clause_param_dict['number_of_results'] = number_of_results
+
+
+        ###############
         # intersections
-        if tags['intersection'] != "":
+        ###############
+        intersection_tag_list = ["named_intersection", "other_intersection"]
+        if [True for tag in tag_list if tag in intersection_tag_list]:
             t1 = time.time()
-            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
-                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
-            if tags['intersection'] == "name":
+            where_clause_query_list = [boundary_box_query]
+
+            # tags
+            if "named_intersection" in tag_list and "other_intersection" not in tag_list:
                 # only bigger intersections
-                where_clause += " AND number_of_streets_with_name > 1"
-            elif tags['intersection'] == "other":
+                where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name > 1"))
+            elif "named_intersection" not in tag_list and "other_intersection" in tag_list:
                 # only smaller intersections
-                where_clause += " AND number_of_streets_with_name <= 1"
-            # search for something?
-            if search_intersections != "":
-                where_clause += " AND %s" % search_intersections
-            # query data
-            result = self.selected_db.fetch_data("" \
-                    "WITH closest_points AS (" \
-                        "SELECT * FROM %s WHERE %s" \
-                    ")" \
-                    "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets, " \
-                            "number_of_streets_with_name, number_of_traffic_signals " \
-                        "FROM closest_points " \
-                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
-                        "LIMIT %d" \
-                    % (Config().database.get("intersection_table"), where_clause,
-                        lon, lat, number_of_results))
+                where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name <= 1"))
+
+            # search
+            if search:
+                where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            LOWER(name) LIKE {p_search_term}
+                            """
+                            ).format(
+                                    p_search_term=sql.Placeholder(name='search_term'))
+                        )
+
+            table_name = Config().database.get("intersection_table")
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_points AS (
+                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                        SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets,
+                                number_of_streets_with_name, number_of_traffic_signals
+                        FROM closest_points {c_order_by_and_limit_query}
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query),
+                    where_clause_param_dict)
             t2 = time.time()
+
             for row in result:
                 intersection_id = int(row['id'])
                 intersection_tags = self.parse_hstore_column(row['tags'])
@@ -84,31 +211,86 @@ class POI:
                 poi_list = self.insert_into_poi_list(poi_list, intersection, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
-                    Config().confirm_removement_of_session_id(self.session_id)
-                    return
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
             t3 = time.time()
-            if self.hide_log_messages == False:
-                print("intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+            logging.debug("intersection gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
+
+        ##########
         # stations
-        if tags['station'] != "":
+        ##########
+        station_tag_list = ["transportation_class_1", "transportation_class_2",
+                "transport_bus_tram", "transport_train_lightrail_subway", "transport_airport_ferry_aerialway"]
+        if [True for tag in tag_list if tag in station_tag_list]:
             t1 = time.time()
-            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f) AND %s" \
-                    % (boundaries['left'], boundaries['bottom'], boundaries['right'],
-                        boundaries['top'], tags['station'])
-            if search_stations != "":
-                where_clause += " AND %s" % search_stations
-            result = self.selected_db.fetch_data("" \
-                    "WITH closest_points AS (" \
-                        "SELECT * FROM stations WHERE %s" \
-                    ")" \
-                    "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
-                            "outer_building_id, number_of_entrances, number_of_lines " \
-                        "FROM closest_points " \
-                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
-                        "LIMIT %d" \
-                    % (where_clause, lon, lat, number_of_results))
+            where_clause_query_list = [boundary_box_query]
+
+            # tags
+            tag_query_list = []
+            for t in tag_list:
+                if t in ["transportation_class_2", "transport_train_lightrail_subway"]:
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                   tags->'railway' = 'station'
+                                OR tags->'railway' = 'halt'
+                                """))
+                if t in ["transportation_class_1", "transport_bus_tram"]:
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                   tags->'amenity' = 'bus_station'
+                                OR (tags->'public_transport' = 'stop_position'
+                                    AND (tags->'bus' = 'yes' OR tags->'highway' = 'bus_stop'))
+                                OR (tags->'highway' = 'bus_stop' AND NOT tags ? 'public_transport')
+                                OR (tags->'public_transport' = 'stop_position'
+                                    AND (tags->'tram' = 'yes' OR tags->'railway' = 'tram_stop'))
+                                OR (tags->'railway' = 'tram_stop' AND NOT tags ? 'public_transport')
+                                """))
+                if t in ["transportation_class_1", "transport_airport_ferry_aerialway"]:
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                   (tags->'public_transport' = 'stop_position'
+                                    AND (tags->'ferry' = 'yes' OR tags->'amenity' = 'ferry_terminal'))
+                                OR (tags->'amenity' = 'ferry_terminal' AND NOT tags ? 'public_transport')
+                                OR (tags->'public_transport' = 'stop_position'
+                                    AND (tags->'aerialway' = 'yes' AND tags->'aerialway' = 'station'))
+                                OR (tags->'aerialway' = 'station' AND NOT tags ? 'public_transport')
+                                """))
+            # add to where clause
+            where_clause_query_list.append(
+                    sql.SQL("({})").format(sql.SQL(" OR ").join(tag_query_list)))
+
+            # search
+            if search:
+                where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            LOWER(tags->'name') LIKE {p_search_term}
+                            """
+                            ).format(
+                                    p_search_term=sql.Placeholder(name='search_term'))
+                        )
+
+            table_name = "stations"
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_points AS (
+                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                        SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags,
+                                outer_building_id, number_of_entrances, number_of_lines
+                        FROM closest_points {c_order_by_and_limit_query}
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query),
+                    where_clause_param_dict)
             t2 = time.time()
+
             for row in result:
                 station_id = int(row['id'])
                 osm_id = int(row['osm_id'])
@@ -119,44 +301,216 @@ class POI:
                     continue
                 if "public_transport" not in station_tags:
                     # legacy mode for stations without stop_position
-                    existance_check = self.selected_db.fetch_data("" \
-                            "SELECT exists(SELECT 1 FROM stations WHERE %s " \
-                                "and tags->'name' = '%s' and tags ? 'public_transport') as exists" \
-                            % (where_clause, station_tags['name']))[0]
-                    if existance_check['exists']:
+                    station_exists_result = self.selected_db.fetch_one(
+                            sql.SQL(
+                                """
+                                SELECT exists(
+                                    SELECT 1
+                                    FROM {i_table_name}
+                                    WHERE {c_where_clause_query}
+                                        and tags->'name' = {p_station_name}
+                                        and tags ? 'public_transport')
+                                as exists
+                                """
+                                ).format(
+                                        i_table_name=sql.Identifier(table_name),
+                                        c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                        p_station_name=sql.Placeholder(name='station_name')),
+                            { **where_clause_param_dict, **{"station_name":station_tags.get("name")}})
+                    if station_exists_result.get("exists"):
                         # the station already is represented by another one with the same name
                         # and a stop_position tag, so skip this one
+                        logging.debug("station with id {} already exists, skip".format(station_id))
                         continue
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
                 poi_list = self.insert_into_poi_list(poi_list, station, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
-                    Config().confirm_removement_of_session_id(self.session_id)
-                    return
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
             t3 = time.time()
-            if self.hide_log_messages == False:
-                print("station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+            logging.debug("station gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
+
+        #####
         # poi
-        if tags['poi'] != "":
+        #####
+        poi_tag_list = ["transport_airport_ferry_aerialway", "transport_taxi",
+                "food", "entertainment", "tourism", "nature", "finance", "shop",
+                "health", "education", "public_service", "all_buildings_with_name",
+                "surveillance", "bench", "trash", "bridge"]
+        if [True for tag in tag_list if tag in poi_tag_list]:
             t1 = time.time()
-            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f) AND %s" \
-                    % (boundaries['left'], boundaries['bottom'], boundaries['right'],
-                        boundaries['top'], tags['poi'])
-            if search_poi != "":
-                where_clause += " AND %s" % search_poi
-            result = self.selected_db.fetch_data("" \
-                    "WITH closest_points AS (" \
-                        "SELECT * FROM poi WHERE %s" \
-                    ")" \
-                    "SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, " \
-                            "outer_building_id, number_of_entrances " \
-                        "FROM closest_points " \
-                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
-                        "LIMIT %d" \
-                    % (where_clause, lon, lat, number_of_results))
+            where_clause_query_list = [boundary_box_query]
+
+            # tags
+            tag_query_list = []
+            for t in tag_list:
+                if t == "transport_airport_ferry_aerialway":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                   tags->'aeroway' = 'aerodrome'
+                                OR tags->'aeroway' = 'terminal'
+                                """))
+                if t == "transport_taxi":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = 'taxi'
+                                """))
+                if t == "food":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"cafe", "bbq", "fast_food", "restaurant",
+                                    "bar", "pub", "drinking_water", "biergarten", "ice_cream"}')
+                                """))
+                if t == "entertainment":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"arts_centre", "Brothel", "Casino", "Cinema", "community_centre",
+                                    "fountain", "planetarium", "social_centre", "nightclub",
+                                    "stripclub", "studio", "swingerclub", "theatre", "youth_centre"}')
+                                OR tags ? 'leisure'
+                                """))
+                if t == "tourism":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"crypt", "place_of_worship", "shelter"}')
+                                OR tags ? 'tourism'
+                                OR tags ? 'historic'
+                                """))
+                if t == "nature":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'natural' = ANY(
+                                    '{"water", "glacier", "beach", "spring", "volcano",
+                                    "peak", "cave_entrance", "rock", "stone"}')
+                                """))
+                if t == "finance":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"atm", "bank", "bureau_de_change"}')
+                                """))
+                if t == "shop":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"fuel", "marketplace", "shop", "shopping", "pharmacy",
+                                    "Supermarket", "post_office", "vending_machine", "veterinary"}')
+                                OR tags ? 'craft'
+                                OR tags ? 'office'
+                                OR tags ? 'shop'
+                                """))
+                if t == "health":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"pharmacy", "doctors", "dentist", "hospital", "health_centre",
+                                    "baby_hatch", "clinic", "nursing_home", "social_facility",
+                                    "retirement_home", "sauna", "shower", "toilets"}')
+                                """))
+                if t == "education":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"school", "college", "university", "library",
+                                    "kindergarten", "Dormitory", "auditorium", "preschool"}')
+                                """))
+                if t == "public_service":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"townhall", "public_building", "embassy", "courthouse",
+                                    "police", "prison", "fire_station", "register_office",
+                                    "shelter", "grave_yard", "crematorium", "village_hall"}')
+                                """))
+                if t == "all_buildings_with_name":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                (tags ? 'building' AND tags ? 'name')
+                                """))
+                if t == "surveillance":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'man_made' = 'surveillance'
+                                """))
+                if t == "bench":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = 'bench'
+                                """))
+                if t == "trash":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"recycling", "waste_basket", "waste_disposal"}')
+                                """))
+                if t == "bridge":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                (tags ? 'bridge' AND tags ? 'name')
+                                """))
+            # add to where clause
+            where_clause_query_list.append(
+                    sql.SQL("({})").format(sql.SQL(" OR ").join(tag_query_list)))
+
+            # exclude vacant shops
+            if "shop" in tag_list:
+                where_clause_query_list.append(
+                        sql.SQL("tags->'shop' != 'vacant'"))
+
+            # search
+            if search:
+                where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            (  LOWER(tags->'name') LIKE {p_search_term}
+                            OR LOWER(tags->'amenity') LIKE {p_search_term}
+                            OR LOWER(tags->'cuisine') LIKE {p_search_term}
+                            OR LOWER(tags->'addr:street') LIKE {p_search_term}
+                            OR LOWER(tags->'street') LIKE {p_search_term})
+                            """
+                            ).format(
+                                    p_search_term=sql.Placeholder(name='search_term'))
+                        )
+
+            table_name = "poi"
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_points AS (
+                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                        SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags,
+                                outer_building_id, number_of_entrances
+                        FROM closest_points {c_order_by_and_limit_query}
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query),
+                    where_clause_param_dict)
             t2 = time.time()
+
             for row in result:
                 poi_id = int(row['id'])
                 osm_id = int(row['osm_id'])
@@ -166,69 +520,103 @@ class POI:
                 poi_list = self.insert_into_poi_list(poi_list, poi, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
-                    Config().confirm_removement_of_session_id(self.session_id)
-                    return
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
             t3 = time.time()
-            if self.hide_log_messages == False:
-                print("poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+            logging.debug("poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
+
+        ###########
         # entrances
-        if tags['entrance'] != "":
+        ###########
+        if "entrance" in tag_list:
             t1 = time.time()
-            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
-                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
-            if search_entrances != "":
-                where_clause += " AND %s" % search_entrances
-            result = self.selected_db.fetch_data("" \
-                    "WITH closest_points AS (" \
-                        "SELECT * FROM entrances WHERE %s" \
-                    ")" \
-                    "SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags " \
-                        "FROM closest_points " \
-                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
-                        "LIMIT %d" \
-                    % (where_clause, lon, lat, number_of_results))
+            where_clause_query_list = [boundary_box_query]
+
+            # search
+            if search:
+                where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            LOWER(label) LIKE {p_search_term}
+                            """
+                            ).format(
+                                    p_search_term=sql.Placeholder(name='search_term'))
+                        )
+
+            table_name = "entrances"
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_points AS (
+                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                        SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags
+                        FROM closest_points {c_order_by_and_limit_query}
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query),
+                    where_clause_param_dict)
             t2 = time.time()
+
             for row in result:
                 entrance = self.create_entrance(int(row['entrance_id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['label'])
                 poi_list = self.insert_into_poi_list(poi_list, entrance, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
-                    Config().confirm_removement_of_session_id(self.session_id)
-                    return
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
             t3 = time.time()
-            if self.hide_log_messages == False:
-                print("entrances gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+            logging.debug("entrances gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
+
+        ######################
         # pedestrian crossings
-        if tags['pedestrian_crossings'] != "":
+        ######################
+        if "pedestrian_crossings" in tag_list:
             t1 = time.time()
-            where_clause = "geom && ST_MakeEnvelope(%f, %f, %f, %f)" \
-                    % (boundaries['left'], boundaries['bottom'], boundaries['right'], boundaries['top'])
-            if search_pedestrian_crossings != "":
-                where_clause += " AND %s" % search_pedestrian_crossings
-            result = self.selected_db.fetch_data("" \
-                    "WITH closest_points AS (" \
-                        "SELECT * FROM pedestrian_crossings WHERE %s" \
-                    ")" \
-                    "SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name " \
-                        "FROM closest_points " \
-                        "ORDER BY ST_Distance(geom::geography, 'POINT(%f %f)'::geography) " \
-                        "LIMIT %d" \
-                    % (where_clause, lon, lat, number_of_results))
+            where_clause_query_list = [boundary_box_query]
+
+            # search
+            if search:
+                where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            LOWER(crossing_street_name) LIKE {p_search_term}
+                            """
+                            ).format(
+                                    p_search_term=sql.Placeholder(name='search_term'))
+                        )
+
+            table_name = "pedestrian_crossings"
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_points AS (
+                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                        SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, tags, crossing_street_name
+                        FROM closest_points {c_order_by_and_limit_query}
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query),
+                    where_clause_param_dict)
             t2 = time.time()
+
             for row in result:
                 signal = self.create_pedestrian_crossing(int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['crossing_street_name'])
                 poi_list = self.insert_into_poi_list(poi_list, signal, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
-                    Config().confirm_removement_of_session_id(self.session_id)
-                    return
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
             t3 = time.time()
-            if self.hide_log_messages == False:
-                print("pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+            logging.debug("pedestrian crossings gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+
 
         # filter out entries above given radius
         thrown_away = 0
@@ -238,64 +626,127 @@ class POI:
                 filtered_poi_list.append(entry)
             else:
                 thrown_away += 1
-        print(thrown_away)
-
+        logging.debug("taken/thrown: {} / {}".format(len(filtered_poi_list), thrown_away))
+        # log
         te = time.time()
-        if self.hide_log_messages == False:
-            print("gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), len(poi_list)))
+        logging.debug("gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), len(poi_list)))
         return filtered_poi_list
 
 
     def next_intersections_for_way(self, node_id, way_id, next_node_id):
+        # check params
+        if not node_id:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "No node_id")
+        elif not isinstance(node_id, int):
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "Invalid node_id")
+        if not way_id:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "No way_id")
+        elif not isinstance(way_id, int):
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "Invalid way_id")
+        if not next_node_id:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "No next_node_id")
+        elif not isinstance(next_node_id, int):
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "Invalid next_node_id")
+
         # get current way id and tags
         try:
             way_id = way_id
             way_tags = self.parse_hstore_column(
-                    self.selected_db.fetch_data("SELECT tags from ways where id = %d" % way_id)[0]['tags'])
-        except (IndexError, KeyError) as e:
-            raise POI.POICreationError(
-                    self.translator.translate("message", "way_id_invalid"))
+                    self.selected_db.fetch_one(
+                        sql.SQL(
+                            """
+                            SELECT tags from ways where id = {p_way_id}
+                            """
+                            ).format(
+                                    p_way_id=sql.Placeholder(name='way_id')),
+                        {"way_id":way_id})
+                    ['tags'])
+        except DBControl.DatabaseResultEmptyError as e:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "way id not found")
+
         # get initial movement direction
         try:
-            node_id_seq_nr = self.selected_db.fetch_data(
-                    "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
-                            % (way_id, node_id))[0]['sequence_id']
-            next_node_id_seq_nr = self.selected_db.fetch_data(
-                    "SELECT sequence_id from way_nodes where way_id = %d AND node_id = %d" \
-                            % (way_id, next_node_id))[0]['sequence_id']
-        except (IndexError, KeyError) as e:
-            raise POI.POICreationError(
-                    self.translator.translate("message", "way_id_invalid"))
+            sequence_id_query = sql.SQL(
+                    """
+                    SELECT sequence_id FROM way_nodes
+                        WHERE way_id = {p_way_id} AND node_id = {p_node_id}
+                    """
+                    ).format(
+                            p_way_id=sql.Placeholder(name='way_id'),
+                            p_node_id=sql.Placeholder(name='node_id'))
+            node_id_seq_nr = self.selected_db.fetch_one(
+                    sequence_id_query,
+                    {"way_id":way_id, "node_id": node_id})['sequence_id']
+            next_node_id_seq_nr = self.selected_db.fetch_one(
+                    sequence_id_query,
+                    {"way_id":way_id, "node_id": next_node_id})['sequence_id']
+        except DBControl.DatabaseResultEmptyError as e:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "node id not found")
         else:
             if node_id_seq_nr < next_node_id_seq_nr:
-                comparison_operator = ">"
-                order_direction = "ASC"
+                is_ascending = True
             else:
-                comparison_operator = "<"
-                order_direction = "DESC"
+                is_ascending = False
 
         # create node list and add start intersection
         next_node_list = []
         first_node = self.create_intersection_by_id(node_id)
-        if first_node:
-            next_node_list.append(first_node)
+        if not first_node:
+            raise WebserverException(
+                    ReturnCode.BAD_REQUEST, "node id not found")
+        next_node_list.append(first_node)
 
         # collect next node id list
         next_node_id_list = []
         index = 0
         while True:
             index += 1
-            next_node_id_list += self.selected_db.fetch_data(
-                    "select node_id from way_nodes " \
-                    "WHERE way_id = %d AND sequence_id %s %d ORDER BY sequence_id %s" \
-                    % (way_id, comparison_operator, node_id_seq_nr, order_direction))
-            # set on the start of the next potential way
+            if is_ascending:
+                next_node_id_list_query = sql.SQL(
+                        """
+                        SELECT node_id FROM way_nodes
+                            WHERE way_id = {p_way_id} AND sequence_id > {p_sequence_id}
+                            ORDER BY sequence_id ASC
+                        """
+                        ).format(
+                            p_way_id=sql.Placeholder(name='way_id'),
+                                    p_sequence_id=sql.Placeholder(name='sequence_id'))
+            else:
+                next_node_id_list_query = sql.SQL(
+                        """
+                        SELECT node_id FROM way_nodes
+                            WHERE way_id = {p_way_id} AND sequence_id < {p_sequence_id}
+                            ORDER BY sequence_id DESC
+                        """
+                        ).format(
+                                p_way_id=sql.Placeholder(name='way_id'),
+                                p_sequence_id=sql.Placeholder(name='sequence_id'))
+            next_node_id_list += self.selected_db.fetch_all(
+                    next_node_id_list_query,
+                    {"way_id":way_id, "sequence_id":node_id_seq_nr})
+
+            # find start of the next potential way
             node_id = next_node_id_list[-1]['node_id']
             potential_next_way_list = []
-            for potential_next_way in self.selected_db.fetch_data(
-                    "SELECT wn.sequence_id AS sequence_id, w.id AS way_id, w.tags AS way_tags " \
-                    "FROM way_nodes wn JOIN ways w ON wn.way_id = w.id " \
-                    "WHERE wn.node_id = %d AND wn.way_id != %d" % (node_id, way_id)):
+            for potential_next_way in self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        SELECT wn.sequence_id AS sequence_id, w.id AS way_id, w.tags AS way_tags
+                        FROM way_nodes wn JOIN ways w ON wn.way_id = w.id
+                        WHERE wn.node_id = {p_node_id} AND wn.way_id != {p_way_id}
+                        """
+                        ).format(
+                                p_node_id=sql.Placeholder(name='node_id'),
+                                p_way_id=sql.Placeholder(name='way_id')),
+                    {"node_id":node_id, "way_id":way_id}):
                 potential_next_way_tags = self.parse_hstore_column(potential_next_way['way_tags'])
                 if potential_next_way_tags.get("name") \
                         and potential_next_way_tags.get("name") == way_tags.get("name"):
@@ -317,11 +768,9 @@ class POI:
                 # comparison and order direction
                 node_id_seq_nr = potential_next_way_list[0]['sequence_id']
                 if node_id_seq_nr == 0:
-                    comparison_operator = ">"
-                    order_direction = "ASC"
+                    is_ascending = True
                 else:
-                    comparison_operator = "<"
-                    order_direction = "DESC"
+                    is_ascending = False
             else:
                 break
 
@@ -343,9 +792,17 @@ class POI:
 
     def create_way_point_by_id(self, osm_node_id):
         try:
-            result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
-                    from nodes where id = %d" % osm_node_id)[0]
-        except IndexError as e:
+            result = self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT ST_X(geom) as x, ST_Y(geom) as y, tags
+                            FROM nodes
+                            WHERE id = {p_osm_node_id}
+                        """
+                        ).format(
+                                p_osm_node_id=sql.Placeholder(name='osm_node_id')),
+                    {"osm_node_id":osm_node_id})
+        except DBControl.DatabaseError as e:
             return {}
         osm_node_id = int(osm_node_id)
         lat = result['y']
@@ -387,9 +844,17 @@ class POI:
 
     def create_way_segment_by_id(self, osm_way_id, walking_reverse=False):
         try:
-            result = self.selected_db.fetch_data("SELECT tags \
-                    from ways where id = %d" % osm_way_id)[0]
-        except IndexError as e:
+            result = self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT tags
+                            FROM ways
+                            WHERE id = {p_osm_way_id}
+                        """
+                        ).format(
+                                p_osm_way_id=sql.Placeholder(name='osm_way_id')),
+                    {"osm_way_id":osm_way_id})
+        except DBControl.DatabaseError as e:
             return {}
         osm_way_id = int(osm_way_id)
         tags = self.parse_hstore_column(result['tags'])
@@ -415,6 +880,8 @@ class POI:
         # name
         if "name" in tags:
             segment['name'] = tags['name']
+        elif "footway" in tags:
+            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['footway'])
         elif "surface" in tags:
             segment['name'] = "%s (%s)" % (segment['sub_type'], tags['surface'])
         elif "tracktype" in tags:
@@ -483,12 +950,20 @@ class POI:
         return segment
 
     def create_intersection_by_id(self, osm_id):
-        intersection_table = Config().database.get("intersection_table")
         try:
-            result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, name, tags, \
-                    number_of_streets, number_of_streets_with_name, number_of_traffic_signals \
-                    from %s where id = %d" % (intersection_table, osm_id))[0]
-        except IndexError as e:
+            result = self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT ST_X(geom) as x, ST_Y(geom) as y, name, tags,
+                                number_of_streets, number_of_streets_with_name, number_of_traffic_signals
+                            FROM {i_intersection_table_name}
+                            WHERE id = {p_osm_id}
+                        """
+                        ).format(
+                                i_intersection_table_name=sql.Identifier(Config().database.get("intersection_table")),
+                                p_osm_id=sql.Placeholder(name='osm_id')),
+                    {"osm_id":osm_id})
+        except DBControl.DatabaseError as e:
             return {}
         osm_id = int(osm_id)
         lat = result['y']
@@ -502,7 +977,6 @@ class POI:
 
     def create_intersection(self, osm_id, lat, lon, name, tags, number_of_streets, number_of_streets_with_name, number_of_traffic_signals):
         intersection_table = Config().database.get("intersection_table")
-        intersection_table_data = Config().database.get("intersection_data_table")
         intersection = {}
         if type(osm_id) is not int \
                 or type(lat) is not float \
@@ -545,11 +1019,18 @@ class POI:
 
         # ways
         intersection['way_list'] = []
-        result = self.selected_db.fetch_data("\
-                SELECT way_id, node_id, direction, way_tags, node_tags, \
-                    ST_X(geom) as lon, ST_Y(geom) as lat \
-                from %s where id = %d" % (intersection_table_data, osm_id))
-        for street in result:
+        for street in self.selected_db.fetch_all(
+                sql.SQL(
+                    """
+                    SELECT way_id, node_id, direction, way_tags, node_tags,
+                            ST_X(geom) as lon, ST_Y(geom) as lat
+                        FROM {i_intersection_data_table_name}
+                        WHERE id = {p_osm_id}
+                    """
+                    ).format(
+                            i_intersection_data_table_name=sql.Identifier(Config().database.get("intersection_data_table")),
+                            p_osm_id=sql.Placeholder(name='osm_id')),
+                {"osm_id":osm_id}):
             sub_segment = self.create_way_segment(
                     street['way_id'],
                     self.parse_hstore_column(street['way_tags']),
@@ -564,9 +1045,16 @@ class POI:
         # crossings
         intersection['pedestrian_crossing_list'] = []
         if number_of_traffic_signals > 0:
-            result = self.selected_db.fetch_data("SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags \
-                    from pedestrian_crossings where intersection_id = %d" % osm_id)
-            for row in result:
+            for row in self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, crossing_street_name, tags
+                            FROM pedestrian_crossings
+                            WHERE intersection_id = {p_osm_id}
+                        """
+                        ).format(
+                                p_osm_id=sql.Placeholder(name='osm_id')),
+                    {"osm_id":osm_id}):
                 signal = self.create_pedestrian_crossing(int(row['id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['crossing_street_name'])
                 intersection['pedestrian_crossing_list'].append(signal)
@@ -690,6 +1178,10 @@ class POI:
             poi['sub_type'] = self.translator.translate("man_made", tags['man_made'])
         elif "natural" in tags:
             poi['sub_type'] = self.translator.translate("natural", tags['natural'])
+        elif "craft" in tags:
+            poi['sub_type'] = self.translator.translate("craft", tags['craft'])
+        elif "office" in tags:
+            poi['sub_type'] = self.translator.translate("office", tags['office'])
         elif "shop" in tags:
             poi['sub_type'] = self.translator.translate("shop", tags['shop'])
         elif "aeroway" in tags:
@@ -737,21 +1229,38 @@ class POI:
         poi['is_inside'] = {}
         if outer_building_id > 0:
             try:
-                result = self.selected_db.fetch_data("SELECT ST_X(geom) as x, ST_Y(geom) as y, tags \
-                        from outer_buildings where id = %d" % outer_building_id)[0]
+                result = self.selected_db.fetch_one(
+                        sql.SQL(
+                            """
+                            SELECT ST_X(geom) as x, ST_Y(geom) as y, tags
+                                FROM outer_buildings
+                                WHERE id = {p_outer_building_id}
+                            """
+                            ).format(
+                                    p_outer_building_id=sql.Placeholder(name='outer_building_id')),
+                        {"outer_building_id":outer_building_id})
+            except DBControl.DatabaseError as e:
+                poi['is_inside'] = {}
+            else:
                 lat = result['y']
                 lon = result['x']
                 tags = self.parse_hstore_column(result['tags'])
                 poi['is_inside'] = self.create_poi(0, 0, lat, lon, tags, 0, 0)
-            except IndexError as e:
-                poi['is_inside'] = {}
 
         # entrances
         poi['entrance_list'] = []
         if number_of_entrances > 0:
-            result = self.selected_db.fetch_data("SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags \
-                    from entrances where poi_id = %d ORDER BY class" % poi_id)
-            for row in result:
+            for row in self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        SELECT entrance_id, ST_X(geom) as lon, ST_Y(geom) as lat, label, tags
+                            FROM entrances
+                            WHERE poi_id = {p_poi_id}
+                            ORDER BY class
+                        """
+                        ).format(
+                                p_poi_id=sql.Placeholder(name='poi_id')),
+                    {"poi_id":poi_id}):
                 entrance = self.create_entrance(row['entrance_id'], row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['label'])
                 poi['entrance_list'].append(entrance)
@@ -826,9 +1335,17 @@ class POI:
         # transport lines
         station['lines'] = []
         if number_of_lines > 0:
-            result = self.selected_db.fetch_data("SELECT DISTINCT line, direction, type \
-                    from transport_lines where poi_id = %d ORDER BY type" % station_id)
-            for row in result:
+            for row in self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        SELECT DISTINCT line, direction, type
+                            FROM transport_lines
+                            WHERE poi_id = {p_station_id}
+                            ORDER BY type
+                        """
+                        ).format(
+                                p_station_id=sql.Placeholder(name='station_id')),
+                    {"station_id":station_id}):
                 if "line" not in row:
                     continue
                 line = {"nr":row['line'], "to":""}
@@ -852,7 +1369,6 @@ class POI:
                 continue
             hstore[keyvalue[0]] = keyvalue[1]
         return hstore
-
 
 
     def extract_address(self, tags):
@@ -903,192 +1419,6 @@ class POI:
         return addr_dict
 
 
-    # function to group poi tags into categories
-    # an overview over commonly used tags can be found at:
-    # http://wiki.openstreetmap.org/wiki/Map_Features
-    def create_tags(self, tag_list):
-        tags = {}
-        tags['intersection'] = ""
-        tags['station'] = ""
-        tags['poi'] = ""
-        tags['entrance'] = ""
-        tags['pedestrian_crossings'] = ""
-
-        # prepare tag list
-        if type(tag_list) != type([]):
-            tag_list = [tag_list]
-
-        for t in tag_list:
-            if t == "transportation_class_1":
-                tags['station'] += " or (" \
-                        "tags->'amenity' = 'bus_station' or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'bus' = 'yes' or tags->'highway' = 'bus_stop')) or " \
-                        "(tags->'highway' = 'bus_stop' and not tags ? 'public_transport') or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'tram' = 'yes' or tags->'railway' = 'tram_stop')) or " \
-                        "(tags->'railway' = 'tram_stop' and not tags ? 'public_transport') or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'ferry' = 'yes' or tags->'amenity' = 'ferry_terminal')) or " \
-                        "(tags->'amenity' = 'ferry_terminal' and not tags ? 'public_transport') or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'aerialway' = 'yes' or tags->'aerialway' = 'station')) or " \
-                        "(tags->'aerialway' = 'station' and not tags ? 'public_transport')" \
-                        ")"
-
-            if t == "transportation_class_2":
-                tags['station'] += " or (" \
-                        "tags->'railway' = 'station' or " \
-                        "tags->'railway' = 'halt'" \
-                        ")"
-
-            if t == "transport_bus_tram":
-                tags['station'] += " or (" \
-                        "tags->'amenity' = 'bus_station' or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'bus' = 'yes' or tags->'highway' = 'bus_stop')) or " \
-                        "(tags->'highway' = 'bus_stop' and not tags ? 'public_transport') or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'tram' = 'yes' or tags->'railway' = 'tram_stop')) or " \
-                        "(tags->'railway' = 'tram_stop' and not tags ? 'public_transport')" \
-                        ")"
-
-            if t == "transport_train_lightrail_subway":
-                tags['station'] += " or (" \
-                        "tags->'railway' = 'station' or " \
-                        "tags->'railway' = 'halt'" \
-                        ")"
-
-            if t == "transport_airport_ferry_aerialway":
-                tags['poi'] += " or (" \
-                        "tags->'aeroway' = 'aerodrome' or " \
-                        "tags->'aeroway' = 'terminal'" \
-                        ")"
-                tags['station'] += " or (" \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'ferry' = 'yes' or tags->'amenity' = 'ferry_terminal')) or " \
-                        "(tags->'amenity' = 'ferry_terminal' and not tags ? 'public_transport') or " \
-                        "(tags->'public_transport' = 'stop_position' and " \
-                            "(tags->'aerialway' = 'yes' or tags->'aerialway' = 'station')) or " \
-                        "(tags->'aerialway' = 'station' and not tags ? 'public_transport')" \
-                        ")"
-
-            if t == "transport_taxi":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = 'taxi'" \
-                        ")"
-
-            if t == "food":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"cafe\", \"bbq\", \"fast_food\", \"restaurant\", \"bar\", " \
-                        "\"pub\", \"drinking_water\", \"biergarten\", \"ice_cream\"}')"
-
-            if t == "entertainment":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = ANY('{" \
-                            "\"arts_centre\", \"Brothel\", \"Casino\", \"Cinema\", \"community_centre\", " \
-                            "\"fountain\", \"planetarium\", \"social_centre\", \"nightclub\", " \
-                            "\"stripclub\", \"studio\", \"swingerclub\", \"theatre\", \"youth_centre\" " \
-                        "}') or " \
-                        "tags ? 'leisure'" \
-                        ")"
-
-            if t == "tourism":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = " \
-                            "ANY('{\"crypt\", \"place_of_worship\", \"shelter\"}') or " \
-                        "tags->'tourism' != '' or " \
-                        "tags->'historic' != ''" \
-                        ")"
-
-            if t == "nature":
-                tags['poi'] += " or (" \
-                        "tags->'natural' = ANY('{" \
-                            "\"water\", \"glacier\", \"beach\", \"spring\", " \
-                            "\"volcano\", \"peak\", \"cave_entrance\", \"rock\", \"stone\"}')" \
-                        ")"
-
-            if t == "finance":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"atm\", \"bank\", \"bureau_de_change\"}')"
-
-            if t == "shop":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = " \
-                            "ANY('{\"fuel\", \"marketplace\", \"shop\", \"shopping\", \"pharmacy\", " \
-                            "\"Supermarket\", \"post_office\", \"vending_machine\", \"veterinary\"}') or " \
-                        "tags->'building' = 'shop' or " \
-                        "tags->'craft' != '' or " \
-                        "tags->'office' != '' or " \
-                        "tags->'shop' != ''" \
-                        ")"
-
-            if t == "health":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"pharmacy\", \"doctors\", \"dentist\", \"hospital\", \"health_centre\", " \
-                            "\"baby_hatch\", \"clinic\", \"nursing_home\", \"social_facility\", " \
-                            "\"retirement_home\", \"sauna\", \"shower\", \"toilets\"}')"
-
-            if t == "education":
-                tags['poi'] += " or tags->'amenity' = " \
-                        "ANY('{\"school\", \"college\", \"university\", \"library\", " \
-                            "\"kindergarten\", \"Dormitory\", \"auditorium\", \"preschool\"}')" 
-
-            if t == "public_service":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = " \
-                            "ANY('{\"townhall\", \"public_building\", \"embassy\", \"courthouse\", " \
-                            "\"police\", \"prison\", \"fire_station\", \"register_office\", " \
-                            "\"shelter\", \"grave_yard\", \"crematorium\", \"village_hall\"}')" \
-                        ")"
-
-            if t == "all_buildings_with_name":
-                tags['poi'] += " or (" \
-                        "(tags ? 'building' and tags ? 'name')" \
-                        ")"
-
-            if t == "surveillance":
-                tags['poi'] += " or (" \
-                        "tags->'man_made' = 'surveillance'" \
-                        ")"
-
-            if t == "bench":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = 'bench'" \
-                        ")"
-
-            if t == "trash":
-                tags['poi'] += " or (" \
-                        "tags->'amenity' = ANY('{\"recycling\", \"waste_basket\", \"waste_disposal\"}')" \
-                        ")"
-
-            if t == "bridge":
-                tags['poi'] += " or (" \
-                        "(tags ? 'bridge' AND tags ? 'name')" \
-                        ")"
-
-        # clean strings
-        if tags['station'].startswith(" or "):
-            tags['station'] = "(%s)" % tags['station'][4:]
-        if tags['poi'].startswith(" or "):
-            tags['poi'] = "(%s)" % tags['poi'][4:]
-
-        # intersections
-        if "named_intersection" in tag_list and "other_intersection" in tag_list:
-            tags['intersection'] = "all"
-        elif "named_intersection" in tag_list:
-            tags['intersection'] = "name"
-        elif "other_intersection" in tag_list:
-            tags['intersection'] = "other"
-
-        # entrances and pedestrian crossings
-        if "entrance" in tag_list:
-            tags['entrance'] = "entrance"
-        if "pedestrian_crossings" in tag_list:
-            tags['pedestrian_crossings'] = "pedestrian_crossings"
-        return tags
-
-
     def insert_into_poi_list(self, poi_list, entry, lat, lon):
         if not entry \
                 or "name" not in entry \
@@ -1112,6 +1442,4 @@ class POI:
         return poi_list
 
 
-    class POICreationError(LookupError):
-        """ is called, when the creation of the next intersection list failed """
 

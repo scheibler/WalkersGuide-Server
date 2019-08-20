@@ -1,91 +1,83 @@
 import java.io.IOException;
-import java.lang.Throwable;
+
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.EnumSet;
-import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
+import com.google.common.base.Charsets;
+
+import de.schildbach.pte.AbstractNetworkProvider;
+import de.schildbach.pte.DbProvider;
+import de.schildbach.pte.NetworkId;
 import de.schildbach.pte.NetworkProvider;
-import de.schildbach.pte.NetworkProvider.Accessibility;
-import de.schildbach.pte.NetworkProvider.Optimize;
-import de.schildbach.pte.NetworkProvider.WalkSpeed;
+import de.schildbach.pte.RtProvider;
+import de.schildbach.pte.VvoProvider;
+
 import de.schildbach.pte.dto.Location;
 import de.schildbach.pte.dto.LocationType;
 import de.schildbach.pte.dto.NearbyLocationsResult;
-import de.schildbach.pte.dto.Product;
+import de.schildbach.pte.dto.Point;
 import de.schildbach.pte.dto.QueryDeparturesResult;
-import de.schildbach.pte.dto.QueryTripsResult;
 
-import de.schildbach.pte.BahnProvider;
-import de.schildbach.pte.VbbProvider;
-import de.schildbach.pte.VvoProvider;
 
 public class QueryData {
 
-    private static final String VBB_IDENTIFIER = "vbb";
-    private static final String VVO_IDENTIFIER = "vvo";
+    private static final String USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.108 Safari/537.36";
+    private static final Map<String,AbstractNetworkProvider> supportedNetworkProviderMap;
 
-    public Location createAddressObject(int latitude, int longitude) {
-        return new Location(LocationType.ADDRESS, null, latitude, longitude);
+    static {
+        Map<String,AbstractNetworkProvider> staticMap = new LinkedHashMap<String,AbstractNetworkProvider>();
+        staticMap.put(
+                NetworkId.RT.name(),
+                new RtProvider());
+        staticMap.put(
+                NetworkId.DB.name(),
+                new DbProvider(
+                    "{\"type\":\"AID\",\"aid\":\"n91dB8Z77MLdoR0K\"}",
+                    "bdI8UVj40K5fvxwf".getBytes(Charsets.UTF_8)));
+        staticMap.put(
+                NetworkId.VVO.name(),
+                new VvoProvider());
+        supportedNetworkProviderMap = Collections.unmodifiableMap(staticMap);
     }
 
-    public QueryTripsResult calculateConnection(
-            String providerIdentifier, Location from, Location to, int delay) {
-        NetworkProvider provider = this.getProvider(providerIdentifier);
-        Date departureDate = new Date( System.currentTimeMillis() + delay*60000 );
-        try {
-            QueryTripsResult result = provider.queryTrips(
-                    from, null, to, departureDate, true, Product.ALL, Optimize.LEAST_CHANGES,
-                    WalkSpeed.SLOW, Accessibility.NEUTRAL, null);
-            // try to get some more trips
-            if (result != null && result.context.canQueryLater()) {
-                QueryTripsResult laterResult = provider.queryMoreTrips(result.context, true);
-                if (laterResult != null) {
-                    for (int i=0; i<laterResult.trips.size(); i++) {
-                        result.trips.add(laterResult.trips.get(i));
-                    }
-                }
-            }
-            return result;
-        } catch (IOException | IllegalStateException | NullPointerException e) {
-            System.out.println("queryTrips error: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }        
+    public static ArrayList<String> getSupportedNetworkProviderIdList() {
+        return new ArrayList<String>(supportedNetworkProviderMap.keySet());
     }
 
-    public QueryDeparturesResult getDepartures(String providerIdentifier, String stationID) {
-        System.out.println("station id: " + stationID);
-        NetworkProvider provider = this.getProvider(providerIdentifier);
-        try {
-            return provider.queryDepartures(stationID, new Date(), 0, false);
-        } catch (IOException e) {
-            System.out.println("getDepartures error: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }        
+    public static NetworkProvider getNetworkProvider(String networkProviderId) {
+        AbstractNetworkProvider provider = supportedNetworkProviderMap.get(networkProviderId);
+        if (provider != null) {
+            provider.setUserAgent(USER_AGENT);
+        }
+        return provider;
     }
 
-    public NearbyLocationsResult getNearestStations(
-            String providerIdentifier, int latitude, int longitude) {
-        NetworkProvider provider = this.getProvider(providerIdentifier);
+    public static NearbyLocationsResult getNearbyStations(
+            NetworkProvider provider, double latitude, double longitude) {
+        Location location = new Location(
+                LocationType.COORD, null, Point.fromDouble(latitude, longitude));
         try {
             return provider.queryNearbyLocations(
-                    EnumSet.of(LocationType.STATION), Location.coord(latitude, longitude), 250, 10);
+                    EnumSet.of(LocationType.STATION), location, 250, 10);
         } catch (IOException e) {
-            System.out.println("getNearestStations error: " + e.getMessage());
+            System.out.println("getNearbyStations error: " + e.getMessage());
             e.printStackTrace();
             return null;
         }        
     }
 
-    private NetworkProvider getProvider(String identifier) {
-        if (identifier != null && identifier.equals(VBB_IDENTIFIER)) {
-            return new VbbProvider();
-        } else if (identifier != null && identifier.equals(VVO_IDENTIFIER)) {
-            return new VvoProvider();
-        } else {
-            return new BahnProvider();
-        }
+    public static QueryDeparturesResult getDepartures(NetworkProvider provider, String stationID) {
+        try {
+            return provider.queryDepartures(stationID, new Date(), 100, false);
+        } catch (IOException e) {
+            System.out.println("queryDepartures error: " + e.getMessage());
+            e.printStackTrace();
+            return null;
+        }        
     }
 
 }

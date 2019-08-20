@@ -211,6 +211,9 @@ update $db_routing_table set kmh=5 where kmh = 7 and clazz = 17 and get_bit(flag
 update $db_routing_table set kmh=7 where get_bit(flags::bit(16), 13) = 1;\n\
 -- set all ways with access = no and foot != yes to class 7 (impassable)\n\
 update $db_routing_table set kmh=7 where get_bit(flags::bit(16), 4) = 1 AND get_bit(flags::bit(16), 14) = 0;\n\
+-- update cost table\n\
+-- set cost of impassable ways to -1\n\
+update $db_routing_table set cost=-1.0 where kmh = 7;\n\
 \n\
 -- create index\n\
 ALTER TABLE $db_routing_table ADD CONSTRAINT pkey_"$db_routing_table" PRIMARY KEY(id);\n\
@@ -222,22 +225,7 @@ CREATE INDEX idx_"$db_routing_table"_geom_way  ON $db_routing_table USING GIST (
 \n\
 -- cluster and analyse\n\
 cluster $db_routing_table USING idx_"$db_routing_table"_geom_way;\n\
-ANALYSE $db_routing_table;\n\
-\n\
--- create and fill way class weights for several factors\n\
-DROP TABLE IF EXISTS $db_way_class_weights;\n\
-CREATE TABLE $db_way_class_weights(\n\
-    id int,\n\
-    x4 int,\n\
-    x3 int,\n\
-    x2 int,\n\
-    x1_5 int,\n\
-    x1 int );\n\
-CREATE UNIQUE INDEX way_class_weights_idx ON $db_way_class_weights (id);\n\
-INSERT INTO $db_way_class_weights VALUES (1, 60, 50, 33, 20, 0);\n\
-INSERT INTO $db_way_class_weights VALUES (2, 0, 0, 0, 0, 0);\n\
-INSERT INTO $db_way_class_weights VALUES (3, -60, -50, -33, -20, 0);\n\
-INSERT INTO $db_way_class_weights VALUES (4, 101, 101, 101, 101, 101);"
+ANALYSE $db_routing_table;"
 echo -e "$commands" >> "$temp_folder/$db_prefix/$db_routing_table.sql"
 
 # import data into database

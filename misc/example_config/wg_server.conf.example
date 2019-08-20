@@ -19,16 +19,19 @@ thread_pool = 10
 gateway_port = 34568
 ram = 16G
 
+[email]
+host_name = smtp.example.org
+port = 587
+user = User
+password = PASSWORD
+
 
 ### maps ###
 [maps]
 
 [[germany]]
-# name and description
 name = Germany
 description = Map of Germany
 # url or list of urls devided by ;
 urls = https://download.geofabrik.de/europe/germany-latest.osm.pbf
-# optional parameters
-development = no
 

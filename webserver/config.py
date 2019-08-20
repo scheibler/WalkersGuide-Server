@@ -5,7 +5,8 @@
 # http://code.activestate.com/recipes/52558/#as_content
 
 import configobj
-import logging
+import datetime
+import logging, logging.handlers, logging.config
 import os
 import sys
 import time
@@ -33,7 +34,10 @@ class Config:
             self.paths['config_folder'] = os.path.join(
                     self.paths.get("project_root"), "config")
             if not os.path.exists(self.paths.get("config_folder")):
-                os.makedirs(self.paths.get("config_folder"))
+                try:
+                    os.makedirs(self.paths.get("config_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("config_folder")))
             # wg-server config file
             self.paths['wg_server_config'] = os.path.join(
                     self.paths.get("config_folder"), "wg_server.conf")
@@ -43,20 +47,39 @@ class Config:
             self.paths['log_folder'] = os.path.join(
                     self.paths.get("project_root"), "logs")
             if not os.path.exists(self.paths.get("log_folder")):
-                os.makedirs(self.paths.get("log_folder"))
+                try:
+                    os.makedirs(self.paths.get("log_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("log_folder")))
             self.paths['maps_log_folder'] = os.path.join(
-                    self.paths.get("log_folder"), "maps")
+                    self.paths.get("log_folder"), "maps", "%04d" % datetime.datetime.now().year)
             if not os.path.exists(self.paths.get("maps_log_folder")):
-                os.makedirs(self.paths.get("maps_log_folder"))
+                try:
+                    os.makedirs(self.paths.get("maps_log_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("maps_log_folder")))
             self.paths['routes_log_folder'] = os.path.join(
                     self.paths.get("log_folder"), "routes")
             if not os.path.exists(self.paths.get("routes_log_folder")):
-                os.makedirs(self.paths.get("routes_log_folder"))
+                try:
+                    os.makedirs(self.paths.get("routes_log_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("routes_log_folder")))
+            self.paths['webserver_log_folder'] = os.path.join(
+                    self.paths.get("log_folder"), "webserver")
+            if not os.path.exists(self.paths.get("webserver_log_folder")):
+                try:
+                    os.makedirs(self.paths.get("webserver_log_folder"))
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("webserver_log_folder")))
             # maps folder
             self.paths['maps_folder'] = os.path.join(
                     self.paths.get("project_root"), "maps")
             if not os.path.exists(self.paths.get("maps_folder")):
-                os.makedirs(self.paths.get("maps_folder"))
+                try:
+                    os.makedirs(self.paths.get("maps_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("maps_folder")))
             # public_transport_library folder and files
             self.paths['public_transport_library_folder'] = os.path.join(
                     self.paths.get("project_root"), "public_transport_library")
@@ -84,7 +107,10 @@ class Config:
             self.paths['temp_folder'] = os.path.join(
                     self.paths.get("project_root"), "tmp")
             if not os.path.exists(self.paths.get("temp_folder")):
-                os.makedirs(self.paths.get("temp_folder"))
+                try:
+                    os.makedirs(self.paths.get("temp_folder"), exist_ok=True)
+                except OSError as e:
+                    exit("Could not create folder {}".format(self.paths.get("temp_folder")))
             # tools folder
             self.paths['tools_folder'] = os.path.join(
                     os.path.dirname(self.paths.get("project_root")), "tools")
@@ -105,22 +131,18 @@ class Config:
             # server name
             self.server_name = self.config["general"].get("server_name", "")
             if not self.server_name:
-                exit('Missing server name.')
+                exit('General: Missing server name.')
             # debug
             self.debug = self._convert_boolean_config_value(
                     "debug", self.config["general"].get("debug"), False)
-            if self.debug:
-                logging.basicConfig(level=logging.DEBUG)
-            else:
-                logging.basicConfig(level=logging.WARNING)
             # status email
             self.status_email = self.config["general"].get("status_email", "")
             if not self.status_email:
-                logging.warning("No status email address found.")
+                exit('General: Missing status_email.')
             # support email
             self.support_email = self.config["general"].get("support_email", "")
             if not self.support_email:
-                logging.warning("No support email address found.")
+                exit('General: Missing support_email.')
 
             # database settings
             if "database" not in self.config:
@@ -153,7 +175,6 @@ class Config:
             self.database['map_info'] = "map_info"
             self.database['routing_prefix'] = "routing"
             self.database['routing_table'] = "%s_2po_4pgr" % self.database.get("routing_prefix")
-            self.database['way_class_weights'] = "way_class_weights"
 
             # webserver settings
             if "webserver" not in self.config:
@@ -180,7 +201,6 @@ class Config:
             else:
                 if self.webserver.get("thread_pool") == 0:
                     self.webserver['thread_pool'] = 10
-                    logging.warning("No thread_pool param found. Using default of 10.")
 
             # java settings
             if "java" not in self.config:
@@ -192,14 +212,133 @@ class Config:
             except ValueError:
                 exit('java: Invalid gateway_port.')
             else:
-                if self.java.get("gateway_port") <= 0 \
+                if self.java.get("gateway_port") < 0 \
                         or self.java.get("gateway_port") >= 65536:
                     exit('java: Missing or invalid gateway_port.')
             # ram
             self.java['ram'] = self.config["java"].get("ram", "")
             if not self.java.get("ram"):
                 self.java['ram'] = "8G"
-                logging.warning("No java ram param found. Using default of 8G.")
+
+            # email settings
+            if "email" not in self.config:
+                exit('Missing main section "[email]".')
+            self.email = {}
+            # host name
+            self.email['host_name'] = self.config["email"].get("host_name", "")
+            if not self.email.get("host_name"):
+                exit('email: Missing host_name.')
+            # port
+            try:
+                self.email['port'] = int(self.config["email"].get("port", 0))
+            except ValueError:
+                exit('email: Missing or invalid port.')
+            else:
+                if self.email.get("port") <= 0 \
+                        or self.email.get("port") >= 65536:
+                    exit('email: Missing or invalid port.')
+            # email user
+            self.email['user'] = self.config["email"].get("user", "")
+            if not self.email.get("user"):
+                exit('email: Missing user.')
+            # email password
+            self.email['password'] = self.config["email"].get("password", "")
+            if not self.email.get("password"):
+                exit('email: Missing password.')
+
+            # configure logging module
+            logging.config.dictConfig(
+                    {
+                        'version': 1,
+                        'formatters': {
+                            'file': {
+                                'format' : '%(asctime)s [%(filename)s, %(funcName)s, Line %(lineno)s]\n[%(levelname)s] %(message)s'
+                            },
+                            'tty': {
+                                '()' : 'webserver.helper.TTYLogFormatter'
+                            }
+                        },
+                        'handlers': {
+                            'email': {
+                                'level' : 'INFO',
+                                'class' : 'webserver.helper.CustomSubjectSMTPHandler',
+                                'formatter' : '',
+                                'mailhost' : (self.email.get("host_name"), self.email.get("port")),
+                                'credentials' : (self.email.get("user"), self.email.get("password")),
+                                'fromaddr' : self.status_email,
+                                'toaddrs' : self.status_email,
+                                'subject' : '{}: %(email_subject)s'.format(self.server_name),
+                                'secure' : ()
+                            },
+                            'file': {
+                                'level' : 'DEBUG' if self.debug else 'INFO',
+                                'class' : 'logging.handlers.TimedRotatingFileHandler',
+                                'formatter' : 'file',
+                                'filename' : os.path.join(self.paths.get("webserver_log_folder"), "walkersguide.log"),
+                                'backupCount' : 10,
+                                'when' : 'midnight',
+                                'delay' : True,
+                                'encoding' : 'utf8'
+                            },
+                            'tty': {
+                                'level' : 'INFO',
+                                'class' :'logging.StreamHandler',
+                                'formatter' : 'tty',
+                                'stream' : 'ext://sys.stdout'
+                            },
+                            'cherrypy_access': {
+                                'level' : 'INFO',
+                                'class' : 'logging.handlers.TimedRotatingFileHandler',
+                                'formatter' : '',
+                                'filename' : os.path.join(self.paths.get("webserver_log_folder"), "access.log"),
+                                'backupCount' : 10,
+                                'when' : 'midnight',
+                                'delay' : True,
+                                'encoding' : 'utf8'
+                            },
+                            'cherrypy_error': {
+                                'level' : 'INFO',
+                                'class' : 'logging.handlers.TimedRotatingFileHandler',
+                                'formatter' : '',
+                                'filename' : os.path.join(self.paths.get("webserver_log_folder"), "errors.log"),
+                                'backupCount' : 10,
+                                'when' : 'midnight',
+                                'delay' : True,
+                                'encoding' : 'utf8'
+                            }
+                        },
+                        'loggers': {
+                            '' : {
+                                'handlers': ['file', 'tty'],
+                                'level' : 'DEBUG' if self.debug else 'INFO'
+                            },
+                            'database' : {
+                                'handlers': ['file'],
+                                'level' : 'DEBUG' if self.debug else 'INFO',
+                                'propagate': False
+                            },
+                            'email' : {
+                                'handlers': ['email', 'tty'],
+                                'level': 'INFO',
+                                'propagate': False
+                            },
+                            'cherrypy.access': {
+                                'handlers': ['cherrypy_access', 'tty'],
+                                'level': 'INFO',
+                                'propagate': False
+                            },
+                            'cherrypy.error': {
+                                'handlers': ['cherrypy_error', 'tty'],
+                                'level': 'INFO',
+                                'propagate': False
+                            },
+                            'py4j': {
+                                'handlers': ['file'],
+                                'level': 'ERROR',
+                                'propagate': False
+                            }
+                        }
+                    })
 
             # maps
             if "maps" not in self.config:
@@ -214,14 +353,6 @@ class Config:
                 # url or url list devided by ;
                 if not map_data.get("urls"):
                     exit('map %s: Missing urls.' % map_id)
-                # optional parameters
-                # development flag
-                if not map_data.get("development"):
-                    map_data['development'] = False
-                    logging.warning("map %s: No development parameter found. Set to False" % map_id)
-                else:
-                    map_data['development'] = self._convert_boolean_config_value(
-                            "development", map_data.get("development"), False)
                 # add to maps dict
                 self.maps[map_id] = map_data
 

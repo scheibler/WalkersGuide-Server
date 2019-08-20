@@ -2,6 +2,22 @@ Change Log
 ==========
 
 
+
+v1.1.0: 2019-08-20
+------------------
+
+Webserver:
+    - Python3 compatible
+    - logging module configured (tty, file and email output)
+    - SQL queries sanitised
+    - Use of webserver return codes instead of error messages in json response
+    - Route calculation: New intersection attributes for next and prev route segment indication
+PublicTransportInterface:
+    - PublicTransportEnabler library version 2019-06-08
+    - New Provider: RT
+
+
+
 v1.0.1: 2018-09-09
 ------------------
 
