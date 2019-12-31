@@ -27,21 +27,13 @@ def create_map_database(map_id):
     # create configuration file for the shell script
     shell_config = []
     shell_config += ['# specify folders']
-    shell_config += ['working_folder="%s"' % Config().paths.get("project_root")]
-    shell_config += ['log_folder="%s"' % Config().paths.get("log_folder")]
     shell_config += ['maps_folder="%s"' % Config().paths.get("maps_folder")]
     shell_config += ['sql_files_folder="%s"' % Config().paths.get("sql_files_folder")]
     shell_config += ['temp_folder="%s"' % Config().paths.get("temp_folder")]
-    shell_config += ['tools_folder="%s"' % Config().paths.get("tools_folder")]
-    # helper programs
-    shell_config += ['\n# some helper programs']
-    shell_config += ['osmfilter_file="$tools_folder/osmfilter"']
-    shell_config += ['osmconvert_file="$tools_folder/osmconvert"']
-    shell_config += ['osmosis_folder="$tools_folder/osmosis"']
-    shell_config += ['osmosis_file="$osmosis_folder/bin/osmosis"']
-    shell_config += ['osm2po_folder="$tools_folder/osm2po"']
-    shell_config += ['osm2po_file="$osm2po_folder/osm2po-core-5.0.18-signed.jar"']
-    shell_config += ['osm2po_config="$osm2po_folder/osm2po.config"']
+    # osm2po
+    shell_config += ['\n# osm2po']
+    shell_config += ['osm2po_executable="%s"' % Config().java.get("osm2po_executable")]
+    shell_config += ['osm2po_config="%s"' % Config().java.get("osm2po_config")]
     # database settings
     shell_config += ['\n# database settings']
     shell_config += ['server_address="%s"' % Config().database.get("host_name")]

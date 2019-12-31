@@ -8,6 +8,7 @@ import configobj
 import datetime
 import logging, logging.handlers, logging.config
 import os
+import shutil
 import sys
 import time
 
@@ -42,7 +43,7 @@ class Config:
             self.paths['wg_server_config'] = os.path.join(
                     self.paths.get("config_folder"), "wg_server.conf")
             if not os.path.exists(self.paths.get("wg_server_config")):
-                exit("Config file %s not available" % self.paths.get("wg_server_config"))
+                exit("WalkersGuide server config file %s not available" % self.paths.get("wg_server_config"))
             # log folders
             self.paths['log_folder'] = os.path.join(
                     self.paths.get("project_root"), "logs")
@@ -111,11 +112,14 @@ class Config:
                     os.makedirs(self.paths.get("temp_folder"), exist_ok=True)
                 except OSError as e:
                     exit("Could not create folder {}".format(self.paths.get("temp_folder")))
-            # tools folder
-            self.paths['tools_folder'] = os.path.join(
-                    os.path.dirname(self.paths.get("project_root")), "tools")
-            if not os.path.exists(self.paths.get("tools_folder")):
-                exit("Tools folder not found.")
+
+            # check if osmconvert, osmfilter and osmosis are installed
+            if not shutil.which("osmconvert"):
+                exit("osmconvert is not installed\napt-get install osmctools")
+            if not shutil.which("osmfilter"):
+                exit("osmfilter is not installed\napt-get install osmctools")
+            if not shutil.which("osmosis"):
+                exit("osmosis is not installed\napt-get install osmosis")
 
             # load config file
             self.config = None
@@ -218,7 +222,21 @@ class Config:
             # ram
             self.java['ram'] = self.config["java"].get("ram", "")
             if not self.java.get("ram"):
-                self.java['ram'] = "8G"
+                exit('java: Missing java vm ram parameter.')
+            # osm2po executable
+            self.java['osm2po_executable'] = self.config["java"].get("osm2po_executable", "")
+            if not self.java.get("osm2po_executable"):
+                exit('java: Missing osm2po_executable.')
+            elif not os.path.exists(self.java.get("osm2po_executable")):
+                exit("osm2po executable %s not found." % self.java.get("osm2po_executable"))
+            # osm2po config file
+            self.java['osm2po_config'] = os.path.join(
+                    self.paths.get("config_folder"), "osm2po.conf")
+            if not os.path.exists(self.java.get("osm2po_config")):
+                exit(
+                        "osm2po config file %s not available\n" \
+                        "cp config.example/osm2po_x.x.x.conf.example config/osm2po.conf" \
+                        % self.java.get("osm2po_config"))
 
             # email settings
             if "email" not in self.config:

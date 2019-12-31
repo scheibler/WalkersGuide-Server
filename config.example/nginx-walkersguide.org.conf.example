@@ -1,10 +1,10 @@
 # nginx configuration for walkersguide.org
 
-# https://api.walkersguide.org
+# https://walkersguide.example.com
 server {
     listen               *:443 ssl;
     listen               [::]:443 ssl;
-	server_name api.walkersguide.org;
+	server_name walkersguide.example.com;
     charset utf-8;
 
     # logging
@@ -14,9 +14,6 @@ server {
     # ssl
     ssl_certificate         /path/to/certificate/fullchain.pem;
     ssl_certificate_key     /path/to/certificate/privkey.pem;
-    add_header Strict-Transport-Security "max-age=31536000" always;
-	ssl_protocols TLSv1 TLSv1.1 TLSv1.2; # Dropping SSLv3, ref: POODLE
-	ssl_prefer_server_ciphers on;
     ssl_session_cache   shared:SSL:10m;
     ssl_session_timeout 10m;
 

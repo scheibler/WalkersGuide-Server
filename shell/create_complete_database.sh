@@ -39,7 +39,7 @@ if [ -f "$o5m_osm_file" ]; then
         exit 22
     fi
 fi
-"$osmconvert_file" "$pbf_osm_file" -o="$o5m_osm_file"
+osmconvert "$pbf_osm_file" -o="$o5m_osm_file"
 if [ ! -f "$o5m_osm_file" ]; then
     echo "o5m file could not be created"
     exit 22
@@ -47,7 +47,7 @@ fi
 
 # extract dumps from downloaded map file
 echo -e "\nCreate database dumps -- started at $(get_timestamp)"
-"$osmosis_file" --read-pbf-fast file="$pbf_osm_file" workers=8 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
+osmosis --read-pbf-fast file="$pbf_osm_file" workers=8 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
 if [[ $? != 0 ]]; then
     echo "Can't create dumps for import"
     exit 32
@@ -97,26 +97,31 @@ fi
 
 # load db schema
 echo -e "\nCreate database schema"
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$osmosis_folder/script/pgsnapshot_schema_0.6.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/pgsnapshot/pgsnapshot_schema_0.6.sql"
 if [[ $? != 0 ]]; then
     exit 33
 fi
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$osmosis_folder/script/pgsnapshot_schema_0.6_action.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/pgsnapshot/pgsnapshot_schema_0.6_action.sql"
 if [[ $? != 0 ]]; then
     exit 33
 fi
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$osmosis_folder/script/pgsnapshot_schema_0.6_bbox.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/pgsnapshot/pgsnapshot_schema_0.6_bbox.sql"
 if [[ $? != 0 ]]; then
     exit 33
 fi
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$osmosis_folder/script/pgsnapshot_schema_0.6_linestring.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/pgsnapshot/pgsnapshot_schema_0.6_linestring.sql"
 if [[ $? != 0 ]]; then
     exit 33
 fi
 
 # load a few other sql helper functions
 echo -e "\nload several sql helper functions"
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$sql_files_folder/misc_functions.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/misc_functions.sql"
 if [[ $? != 0 ]]; then
     exit 33
 fi
@@ -125,7 +130,8 @@ fi
 echo -e "\nImport dumps into database -- started at $(get_timestamp)"
 old_directory=$(pwd)
 cd "$temp_folder"
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 -f "$sql_files_folder/pgsnapshot_load_0.6.sql"
+psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+    -f "$sql_files_folder/pgsnapshot/pgsnapshot_load_0.6.sql"
 if [[ $? != 0 ]]; then
     exit 34
 fi
@@ -151,7 +157,9 @@ if [ -d "$temp_folder/$db_prefix" ]; then
 fi
 current_folder="$(pwd)"
 cd "$temp_folder"
-java -Xmx$ram -jar "$osm2po_file" config="$osm2po_config" prefix="$db_prefix" cmd=tjsgp "$pbf_osm_file"
+java -Xmx$ram -jar "$osm2po_executable" \
+    config="$osm2po_config" prefix="$db_prefix" cmd=tjsgp "$pbf_osm_file" \
+    postp.0.class=de.cm.osm2po.plugins.postp.PgRoutingWriter
 rc=$?
 cd "$current_folder"
 if [[ $rc != 0 ]]; then
@@ -249,32 +257,32 @@ cd "$temp_folder"
 
 # pedestrian crossings
 filter="highway=crossing or railway=crossing or crossing="
-"$osmfilter_file" "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
-| "$osmosis_file" --read-xml file=- \
+osmfilter "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder"
 mv nodes.txt pedestrian_crossings.txt
 rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # outer buildings
 filter="building= or amenity= or shop= or tourism= or leisure= or public_transport=station or railway=station =halt"
-"$osmfilter_file" "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations="$filter" \
-| "$osmosis_file" --read-xml file=- \
+osmfilter "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations="$filter" \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
 mv ways.txt outer_buildings.txt
 rm nodes.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # subway entrances
 filter="railway=subway_entrance"
-"$osmfilter_file" "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
-| "$osmosis_file" --read-xml file=- \
+osmfilter "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder"
 mv nodes.txt subway_entrances.txt
 rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # building entrances
 filter="entrance= building=entrance"
-"$osmfilter_file" "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
-| "$osmosis_file" --read-xml file=- \
+osmfilter "$o5m_osm_file" --keep-nodes="$filter" --keep-ways= --keep-relations= \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder"
 mv nodes.txt building_entrances.txt
 rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
@@ -287,16 +295,16 @@ public_transport=stop_position =station or aeroway=terminal =aerodrom =helipad o
 highway=bus_stop =crossing =traffic_signals or railway=halt =station =tram_stop =crossing"
 
 # ways
-"$osmfilter_file" "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations= \
-| "$osmosis_file" --read-xml file=- \
+osmfilter "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations= \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder" enableLinestringBuilder=yes enableBboxBuilder=yes
 mv ways.txt poi_ways.txt
 rm nodes.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # nodes and relations
-"$osmfilter_file" "$o5m_osm_file" --ignore-dependencies \
+osmfilter "$o5m_osm_file" --ignore-dependencies \
 --keep-nodes="$filter" --keep-ways= --keep-relations="$filter" \
-| "$osmosis_file" --read-xml file=- \
+| osmosis --read-xml file=- \
 --write-pgsql-dump directory="$temp_folder"
 mv nodes.txt poi_nodes.txt
 mv relations.txt poi_relations.txt
