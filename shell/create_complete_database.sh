@@ -23,13 +23,35 @@ if [ "$(ls -A $temp_folder 2> /dev/null)" != "" ]; then
     fi
 fi
 
-# download new map
-echo "download new map -- started at $(get_timestamp)"
-wget -q -O "$pbf_osm_file" "$download_map_url"
-if [ ! -f "$pbf_osm_file" ]; then
-    echo "Error: Could not download new map data"
-    exit 31
+# download new map(s)
+echo "download new map(s) -- started at $(get_timestamp)"
+maps_parts_folder="$maps_folder/parts"
+mkdir "$maps_parts_folder"
+for url in "${download_map_urls[@]}"
+do
+    echo "Download $url"
+    wget -q --directory-prefix "$maps_parts_folder" "$url"
+    wget_rc=$?
+    if [[ $wget_rc != 0 ]]; then
+        echo "Error during download: wget rc = $wget_rc"
+        exit 1
+    fi
+done
+
+# merge or rename
+number_of_downloaded_maps=$(ls -1 "$maps_parts_folder" | wc -l)
+if [[ $number_of_downloaded_maps = 1 ]]; then
+    # rename to $pbf_osm_file
+    mv "$maps_parts_folder/$(ls -1 "$maps_parts_folder" | head -n 1)" "$pbf_osm_file"
+elif [[ $number_of_downloaded_maps > 1 ]]; then
+    # merge into single .pbf file
+    osmium merge "$maps_parts_folder"/* -o "$pbf_osm_file"
 fi
+if [ ! -f "$pbf_osm_file" ]; then
+    echo "Map file $pbf_osm_file could not be created"
+    exit 1
+fi
+rm -R "$maps_parts_folder"
 
 # convert to o5m
 if [ -f "$o5m_osm_file" ]; then
@@ -375,17 +397,15 @@ if [[ $? != 0 ]]; then
     exit 27
 fi
 
+# cleanup
+# rename pbf map file
+mv "$pbf_osm_file" "${pbf_osm_file:0:-4}.$db_active_name.$(get_current_date).pbf"
 # remove o5m map file
 rm -f "$o5m_osm_file"
-# and rename pbf map file
-mv "$pbf_osm_file" "${pbf_osm_file:0:-4}.$db_active_name.$(get_current_date).pbf"
-
+# remove config file
+rm "$folder_name/configuration.sh"
 # clean temp folder again
 rm -R -f $temp_folder/*
-if [[ $? != 0 ]]; then
-    echo "Could not delete temp poi data"
-    exit 31
-fi
 
 echo -e "\nProductive database created at $(get_timestamp)"
 exit 0

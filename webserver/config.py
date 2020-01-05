@@ -371,6 +371,8 @@ class Config:
                 # url or url list devided by ;
                 if not map_data.get("urls"):
                     exit('map %s: Missing urls.' % map_id)
+                elif type(map_data.get("urls")) is not list:
+                    map_data['urls'] = [ map_data.get("urls") ]
                 # add to maps dict
                 self.maps[map_id] = map_data
 

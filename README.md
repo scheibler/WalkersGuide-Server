@@ -168,10 +168,10 @@ You can find a sample configuration for nginx at `config.example/nginx-walkersgu
 
 ### OpenStreetMap tools ###
 
-First install Osmosis, OSMFilter and OSMConvert:
+First install Osmosis, OSMFilter, OSMConvert and Osmium:
 
 ```
-root# apt-get install osmosis osmctools
+root# apt-get install osmosis osmctools osmium-tool
 ```
 
 Then download osm2po. The application creates a database table which represents the routing graph of

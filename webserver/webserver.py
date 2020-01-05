@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import cherrypy
+import datetime
 import json
 import logging
 import time
 import traceback
-from py4j.protocol import Py4JNetworkError
 
 from . import constants
 from .config import Config
@@ -25,6 +25,42 @@ class RoutingWebService():
         self.last_map_exception_email_sent = 0
         self.last_public_transport_exception_email_sent = 0
         logging.info("Webserver initialized: {}".format(json.dumps(self.get_status(), indent=4)))
+
+
+    @cherrypy.expose
+    def index(self):
+        map_list = []
+        for map_id, map_data in self.get_status().get("maps").items():
+            map_creation_date = datetime.datetime.fromtimestamp(
+                    map_data.get("created")/1000)
+            map_list.append(
+                    "            <li>%s: Created at %04d-%02d-%02d<br />%s</li>" \
+                            % (map_data.get("name"), map_creation_date.year,
+                                map_creation_date.month, map_creation_date.day,
+                                map_data.get("description")))
+        return """
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="author" content="Eric Scheibler" />
+        <title>WalkersGuide API status page</title>
+        <style>
+            body {{font: normal 100.01% Helvetica, Arial, sans-serif;}}
+            h1   {{font-size: 1.2em;}}
+        </style>
+    </head>
+    <body>
+        <h1>{}</h1>
+        <p>Version: {}</p>
+        <p>Available maps:</p>
+        <ul>
+{}
+        </ul>
+        <p>Mor information at <a href="https://www.walkersguide.org">www.walkersguide.org</a></p>
+    </body>
+</html>
+""".format(Config().server_name, constants.server_version, '\n'.join(map_list))
 
 
     @cherrypy.expose
@@ -197,9 +233,6 @@ class RoutingWebService():
         except WebserverException as e:
             cherrypy.response.status = e.return_code
             logging.error(e)
-        except Py4JNetworkError as e:
-            cherrypy.response.status = ReturnCode.BAD_GATEWAY
-            logging.critical(e, exc_info=True)
         except Exception as e:
             cherrypy.response.status = ReturnCode.INTERNAL_SERVER_ERROR
             logging.critical(e, exc_info=True)
@@ -240,7 +273,6 @@ class RoutingWebService():
     @cherrypy.expose
     @cherrypy.tools.json_out()
     def get_status(self):
-        logging.info("Query: get_status")
         result = {}
         # server params
         result['server_name'] = Config().server_name
@@ -268,8 +300,6 @@ class RoutingWebService():
         for map_id, map_data in Config().maps.items():
             try:
                 db = DBControl(map_id)
-            except WebserverException as e:
-                logging.error(e)
             except Exception as e:
                 logging.critical(e, exc_info=True)
                 if int(time.time()) - self.last_map_exception_email_sent > self.email_resend_delay:

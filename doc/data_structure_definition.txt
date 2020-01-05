@@ -162,6 +162,6 @@ Map:
 * name: String
 * description: String
 * created: Long
-* urls: String
+* urls: List<String>
 * version: Integer
 

@@ -26,7 +26,9 @@ class DBControl():
         self.password = Config().database.get("password")
         # database name
         if not map_id:
-            raise WebserverException(ReturnCode.MAP_LOADING_FAILED, 'No map id')
+            raise WebserverException(
+                    ReturnCode.MAP_LOADING_FAILED,
+                    'No map id')
         self.db_name = map_id
 
         # query map version and creation date from database

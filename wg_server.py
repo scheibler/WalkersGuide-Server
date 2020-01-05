@@ -53,7 +53,7 @@ def create_map_database(map_id):
     shell_config += ['export JAVACMD_OPTIONS="-server -Xmx$ram -Djava.io.tmpdir=$temp_folder"']
     # map settings
     shell_config += ['\n# maps']
-    shell_config += ['download_map_url="%s"' % map.get("urls")]
+    shell_config += ['download_map_urls=("%s")' % '" "'.join(map.get("urls"))]
     shell_config += ['pbf_osm_file="$maps_folder/map.osm.pbf"']
     shell_config += ['o5m_osm_file="$maps_folder/map.o5m"']
     # write shell configuration script

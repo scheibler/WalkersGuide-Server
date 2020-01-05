@@ -33,6 +33,6 @@ password = PASSWORD
 [[germany]]
 name = Germany
 description = Map of Germany
-# url or list of urls devided by ;
+# url or list of urls, separated by ,
 urls = https://download.geofabrik.de/europe/germany-latest.osm.pbf
 

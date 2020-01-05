@@ -20,8 +20,10 @@ class PublicTransport:
     def get_supported_public_transport_provider_list(cls):
         supported_public_transport_provider_list = []
         if Config().java.get("gateway_port") > 0:
-            for provider_id in cls.get_gateway().entry_point.getSupportedNetworkProviderIdList():
+            gateway = cls.get_gateway()
+            for provider_id in gateway.entry_point.getSupportedNetworkProviderIdList():
                 supported_public_transport_provider_list.append(provider_id)
+            gateway.close_callback_server()
         return supported_public_transport_provider_list
 
 
