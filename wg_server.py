@@ -27,9 +27,11 @@ def create_map_database(map_id):
     # create configuration file for the shell script
     shell_config = []
     shell_config += ['# specify folders']
-    shell_config += ['maps_folder="%s"' % Config().paths.get("maps_folder")]
     shell_config += ['sql_files_folder="%s"' % Config().paths.get("sql_files_folder")]
     shell_config += ['temp_folder="%s"' % Config().paths.get("temp_folder")]
+    shell_config += ['maps_temp_subfolder="$temp_folder/maps"' ]
+    shell_config += ['osm_data_temp_subfolder="$temp_folder/osm_data"' ]
+    shell_config += ['poi_temp_subfolder="$temp_folder/poi"' ]
     # osm2po
     shell_config += ['\n# osm2po']
     shell_config += ['osm2po_executable="%s"' % Config().java.get("osm2po_executable")]
@@ -49,13 +51,14 @@ def create_map_database(map_id):
     shell_config += ['export PGPASSWORD=$password']
     # Java options
     shell_config += ['\n# Java options']
-    shell_config += ['ram="%s"' % Config().java.get("ram")]
-    shell_config += ['export JAVACMD_OPTIONS="-server -Xmx$ram -Djava.io.tmpdir=$temp_folder"']
+    shell_config += ['osm2po_ram_param="-Xmx%dg"' % Config().java.get("ram_in_gb")]
+    shell_config += ['export JAVACMD_OPTIONS="-server -Xmx%dG -Djava.io.tmpdir=%s"' \
+            % (Config().java.get("ram_in_gb"), Config().paths.get("temp_folder")) ]
     # map settings
     shell_config += ['\n# maps']
     shell_config += ['download_map_urls=("%s")' % '" "'.join(map.get("urls"))]
-    shell_config += ['pbf_osm_file="$maps_folder/map.osm.pbf"']
-    shell_config += ['o5m_osm_file="$maps_folder/map.o5m"']
+    shell_config += ['pbf_osm_file="$maps_temp_subfolder/map.osm.pbf"']
+    shell_config += ['o5m_osm_file="$maps_temp_subfolder/map.o5m"']
     # write shell configuration script
     with open(Config().paths.get("shell_config"), "w") as f:
         f.write('\n'.join(shell_config))

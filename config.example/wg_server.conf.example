@@ -17,7 +17,7 @@ thread_pool = 10
 
 [java]
 gateway_port = 34568
-ram = 16G
+ram_in_gb = 16
 osm2po_executable = /path/to/tools/osm2po-x.x.x/osm2po-core-x.x.x-signed.jar
 
 [email]

@@ -22,11 +22,10 @@ Project structure
 -----------------
 
 The map data for the routing process comes from [OpenStreetMap](http://openstreetmap.org). A country
-or continent is downloaded and stored in a local Postgresql database. The scripts from the
-"sql_functions" and "shell" folders help you to get a local copy of the OpenStreetMap database on
-your server. But they not only create the database but also calculate additional database tables
-like intersections, poi and a routing graph. These tables are required to perform the creation of a
-walkers route.
+or continent is downloaded and stored in a local Postgresql database. The bash script
+`shell/create_complete_database.sh` creates a local copy of the OpenStreetMap database on your
+server. Furthermore it calculates additional database tables like intersections, poi and a routing
+graph. These tables are required to perform the creation of a walkers route.
 
 The "webserver" folder contains python scripts to query data from the database and calculate the actual
 route. It starts a web server, which listens for client requests on a specific port, calls the
@@ -205,10 +204,10 @@ osm$ rm -R hh
 
 ### WalkersGuide ###
 
-Install git, screen and python pip:
+Install git, pip, parallel and screen
 
 ```
-root# apt-get install git screen python-pip
+root# apt-get install git python-pip moreutils screen
 root# pip install virtualenv
 ```
 

@@ -1,10 +1,9 @@
-.in_progress
 config/
 logs/
-maps/
 obsolete_code_snippets/
 public_transport_library/build/
 public_transport_library/.gradle/
 __pycache__/
 shell/configuration.sh
-tmp/
+shell/.in_progress
+shell/tmp/

@@ -73,14 +73,6 @@ class Config:
                     os.makedirs(self.paths.get("webserver_log_folder"))
                 except OSError as e:
                     exit("Could not create folder {}".format(self.paths.get("webserver_log_folder")))
-            # maps folder
-            self.paths['maps_folder'] = os.path.join(
-                    self.paths.get("project_root"), "maps")
-            if not os.path.exists(self.paths.get("maps_folder")):
-                try:
-                    os.makedirs(self.paths.get("maps_folder"), exist_ok=True)
-                except OSError as e:
-                    exit("Could not create folder {}".format(self.paths.get("maps_folder")))
             # public_transport_library folder and files
             self.paths['public_transport_library_folder'] = os.path.join(
                     self.paths.get("project_root"), "public_transport_library")
@@ -98,28 +90,32 @@ class Config:
             self.paths['shell_create_map_database'] = os.path.join(
                     self.paths.get("shell_folder"), "create_complete_database.sh")
             self.paths['shell_lock_file'] = os.path.join(
-                    self.paths.get("project_root"), ".in_progress")
-            # sql_functions folder
+                    self.paths.get("shell_folder"), ".in_progress")
+            # sql_functions subfolder
             self.paths['sql_files_folder'] = os.path.join(
-                    self.paths.get("project_root"), "sql_functions")
+                    self.paths.get("shell_folder"), "sql")
             if not os.path.exists(self.paths.get("sql_files_folder")):
                 exit("SQL functions folder not found.")
-            # temp folder
+            # temp subfolder
             self.paths['temp_folder'] = os.path.join(
-                    self.paths.get("project_root"), "tmp")
+                    self.paths.get("shell_folder"), "tmp")
             if not os.path.exists(self.paths.get("temp_folder")):
                 try:
                     os.makedirs(self.paths.get("temp_folder"), exist_ok=True)
                 except OSError as e:
                     exit("Could not create folder {}".format(self.paths.get("temp_folder")))
 
-            # check if osmconvert, osmfilter and osmosis are installed
+            # check if osmconvert, osmfilter, osmium, osmosis and parallel are installed
             if not shutil.which("osmconvert"):
                 exit("osmconvert is not installed\napt-get install osmctools")
             if not shutil.which("osmfilter"):
                 exit("osmfilter is not installed\napt-get install osmctools")
+            if not shutil.which("osmium"):
+                exit("osmium is not installed\napt-get install osmium-tool")
             if not shutil.which("osmosis"):
                 exit("osmosis is not installed\napt-get install osmosis")
+            if not shutil.which("parallel"):
+                exit("parallel is not installed\napt-get install moreutils")
 
             # load config file
             self.config = None
@@ -160,7 +156,7 @@ class Config:
             try:
                 self.database['port'] = int(self.config["database"].get("port", 0))
             except ValueError:
-                exit('Database: Missing or invalid port.')
+                exit('Database: Malformed port.')
             else:
                 if self.database.get("port") <= 0 \
                         or self.database.get("port") >= 65536:
@@ -192,7 +188,7 @@ class Config:
             try:
                 self.webserver['port'] = int(self.config["webserver"].get("port", 0))
             except ValueError:
-                exit('webserver: Missing or invalid port.')
+                exit('webserver: Malformed port.')
             else:
                 if self.webserver.get("port") <= 0 \
                         or self.webserver.get("port") >= 65536:
@@ -201,7 +197,7 @@ class Config:
             try:
                 self.webserver['thread_pool'] = int(self.config["webserver"].get("thread_pool", 0))
             except ValueError:
-                exit('webserver: Invalid thread_pool.')
+                exit('webserver: Malformed thread_pool.')
             else:
                 if self.webserver.get("thread_pool") == 0:
                     self.webserver['thread_pool'] = 10
@@ -214,15 +210,19 @@ class Config:
             try:
                 self.java['gateway_port'] = int(self.config["java"].get("gateway_port", 0))
             except ValueError:
-                exit('java: Invalid gateway_port.')
+                exit('java: Malformed gateway_port.')
             else:
                 if self.java.get("gateway_port") < 0 \
                         or self.java.get("gateway_port") >= 65536:
                     exit('java: Missing or invalid gateway_port.')
             # ram
-            self.java['ram'] = self.config["java"].get("ram", "")
-            if not self.java.get("ram"):
-                exit('java: Missing java vm ram parameter.')
+            try:
+                self.java['ram_in_gb'] = int(self.config["java"].get("ram_in_gb", 0))
+            except ValueError:
+                exit('java: malformed java vm ram parameter.')
+            else:
+                if self.java.get("ram_in_gb") <= 0:
+                    exit('java: Missing or invalid java vm ram parameter.')
             # osm2po executable
             self.java['osm2po_executable'] = self.config["java"].get("osm2po_executable", "")
             if not self.java.get("osm2po_executable"):
@@ -250,7 +250,7 @@ class Config:
             try:
                 self.email['port'] = int(self.config["email"].get("port", 0))
             except ValueError:
-                exit('email: Missing or invalid port.')
+                exit('email: Malformed port.')
             else:
                 if self.email.get("port") <= 0 \
                         or self.email.get("port") >= 65536:
