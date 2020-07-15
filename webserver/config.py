@@ -73,13 +73,6 @@ class Config:
                     os.makedirs(self.paths.get("webserver_log_folder"))
                 except OSError as e:
                     exit("Could not create folder {}".format(self.paths.get("webserver_log_folder")))
-            # public_transport_library folder and files
-            self.paths['public_transport_library_folder'] = os.path.join(
-                    self.paths.get("project_root"), "public_transport_library")
-            if not os.path.exists(self.paths.get("public_transport_library_folder")):
-                exit("Public transport library folder not found.")
-            self.paths['public_transport_library_executable'] = os.path.join(
-                    self.paths.get("public_transport_library_folder"), "dist", "PublicTransportInterface.jar")
             # shell folder and files
             self.paths['shell_folder'] = os.path.join(
                     self.paths.get("project_root"), "shell")
@@ -206,15 +199,6 @@ class Config:
             if "java" not in self.config:
                 exit('Missing main section "[java]".')
             self.java = {}
-            # gateway_port
-            try:
-                self.java['gateway_port'] = int(self.config["java"].get("gateway_port", 0))
-            except ValueError:
-                exit('java: Malformed gateway_port.')
-            else:
-                if self.java.get("gateway_port") < 0 \
-                        or self.java.get("gateway_port") >= 65536:
-                    exit('java: Missing or invalid gateway_port.')
             # ram
             try:
                 self.java['ram_in_gb'] = int(self.config["java"].get("ram_in_gb", 0))

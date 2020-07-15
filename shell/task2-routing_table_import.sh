@@ -84,6 +84,7 @@ if [[ $? != 0 ]]; then
     echo "\nError during routing table import"
     exit 3
 fi
+rm -R "$db_prefix"
 
 
 ###
@@ -151,7 +152,7 @@ osmfilter "$o5m_osm_file" --ignore-dependencies \
     --write-pgsql-dump directory="$poi_temp_subfolder"
 mv nodes.txt poi_nodes.txt
 mv relations.txt poi_relations.txt
-rm relation_members.txt users.txt way_nodes.txt ways.txt
+rm relation_members.txt users.txt way_nodes.txt ways.txt "$o5m_osm_file"
 
 echo -e "\nRouting table import and poi data extraction successful -- started at $(get_timestamp)"
 exit 0

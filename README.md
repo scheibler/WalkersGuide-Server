@@ -31,12 +31,6 @@ The "webserver" folder contains python scripts to query data from the database a
 route. It starts a web server, which listens for client requests on a specific port, calls the
 route creation functions and returns the results to the client.
 
-The PublicTransportInterface "dist" folder holds a small Java program to query public transportation data
-like routes and departure timetables. The program serves as a wrapper for the Java library
-[public-transport-enabler](https://github.com/schildbach/public-transport-enabler). This library
-fetches, among others, data from the German public transportation provider "Deutsche Bahn". Therefore the public
-transportation functionality currently is limited outside of Germany.
-
 
 
 Installation
@@ -146,15 +140,6 @@ root# service postgresql restart
 ```
 
 
-### Java ###
-
-Some operations like compiling the public transportation library require the Java JDK:
-
-```
-root# apt-get install default-jdk gradle
-```
-
-
 ### Webserver installation ###
 
 The WalkersGuide Android client requires a secure connection via SSL. Don't use
@@ -219,7 +204,7 @@ osm$ cd /mnt/navi
 osm$ mkdir virtualenv
 osm$ cd virtualenv
 osm$ virtualenv [-p python3] walkersguide
-osm$ ./walkersguide/bin/pip install py4j requests configobj cherrypy psycopg2-binary
+osm$ ./walkersguide/bin/pip install requests configobj cherrypy psycopg2-binary
 ```
 
 Clone the WalkersGuide-Server repository
@@ -233,7 +218,7 @@ Enter the project directory and create some folders:
 
 ```
 cd walkersguide
-mkdir config logs maps tmp
+mkdir config logs
 ```
 
 Copy the osm2po configuration file.  The config file from the example config
@@ -270,13 +255,7 @@ osm$ cd /mnt/navi/walkersguide
 osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py create-map-database germany
 ```
 
-start the public transport wrapper in tty 1:
-
-```
-osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py start-public-transport-library
-```
-
-and launch the webserver in tty 2:
+Afterwards launch the webserver:
 
 ```
 osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py start-webserver

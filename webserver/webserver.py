@@ -14,7 +14,6 @@ from .constants import ReturnCode
 from .db_control import DBControl
 from .helper import WebserverException, send_email
 from .poi import POI
-from .public_transport import PublicTransport
 from .pedestrian_route import PedestrianRoute
 
 
@@ -23,7 +22,6 @@ class RoutingWebService():
 
     def __init__(self):
         self.last_map_exception_email_sent = 0
-        self.last_public_transport_exception_email_sent = 0
         logging.info("Webserver initialized: {}".format(json.dumps(self.get_status(), indent=4)))
 
 
@@ -204,7 +202,7 @@ class RoutingWebService():
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
-    def get_departures(self):
+    def send_feedback(self):
         # parse json encoded input
         try:
             input = cherrypy.request.json
@@ -213,36 +211,23 @@ class RoutingWebService():
             logging.error(e)
             return
         else:
-            logging.info("Query: get_departures\nParams: {}".format(input))
-        # create session id
-        try:
-            session_id = self.create_session_id(input)
-        except WebserverException as e:
-            cherrypy.response.status = e.return_code
-            logging.error(e)
-            return
+            logging.info("Query: send_feedback\nParams: {}".format(input))
+        # check for message and token
+        if not input.get("message"):
+            cherrypy.response.status = ReturnCode.BAD_REQUEST
+            logging.error("Missing message. Email not sent.")
+        elif not input.get("token"):
+            cherrypy.response.status = ReturnCode.BAD_REQUEST
+            logging.error("Missing token. Email not sent.")
+        elif input.get("token") not in constants.supported_feedback_token_list:
+            cherrypy.response.status = ReturnCode.BAD_REQUEST
+            logging.error("Unsupported token: {}. Email not sent.".format(input.get("token")))
         else:
-            Config().add_session_id(session_id)
-        # get departures
-        result = {}
-        try:
-            public_transport = PublicTransport(session_id)
-            departure_list = public_transport.get_departures(
-                    input.get("lat"), input.get("lon"),
-                    input.get("public_transport_provider"), input.get("vehicles"))
-        except WebserverException as e:
-            cherrypy.response.status = e.return_code
-            logging.error(e)
-        except Exception as e:
-            cherrypy.response.status = ReturnCode.INTERNAL_SERVER_ERROR
-            logging.critical(e, exc_info=True)
             send_email(
-                    "Error in function get_departures", traceback.format_exc())
-        else:
-            result['departures'] = departure_list
-        finally:
-            Config().confirm_removement_of_session_id(session_id)
-        return result
+                    "User request: {}".format(input.get("token")),
+                    "Token: {}\nSender: {}\n\n{}".format(
+                        input.get("token"), input.get("sender"), input.get("message")))
+        return
 
 
     @cherrypy.expose
@@ -282,19 +267,6 @@ class RoutingWebService():
         # supported poi categories and languages
         result['supported_poi_category_list'] = constants.supported_poi_category_listp
         result['supported_language_list'] = constants.supported_language_list
-        # public transport provider
-        result['supported_public_transport_provider_list'] = []
-        try:
-            public_transport_provider_list = PublicTransport.get_supported_public_transport_provider_list()
-        except Exception as e:
-            logging.critical(e, exc_info=True)
-            if int(time.time()) - self.last_public_transport_exception_email_sent > self.email_resend_delay:
-                send_email(
-                        "Could not load the supported public transport provider list",
-                        traceback.format_exc())
-                self.last_public_transport_exception_email_sent = int(time.time())
-        else:
-            result['supported_public_transport_provider_list'] = public_transport_provider_list
         # maps
         result['maps'] = {}
         for map_id, map_data in Config().maps.items():
@@ -311,11 +283,6 @@ class RoutingWebService():
                 # extend with map version and creation date from the database table "map_info"
                 result['maps'][map_id] = {
                         **map_data, **{"version":db.map_version, "created":db.map_created}}
-        # deprecated params in api version 2, remove when switch to version 3
-        result['supported_indirection_factor_list'] = constants.supported_indirection_factor_list
-        result['supported_way_class_list'] = constants.supported_way_class_list
-        for map_id, map_data in result.get("maps").items():
-            result['maps'][map_id] = {**map_data, **{"development":False}}
         return result
 
 

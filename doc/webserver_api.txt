@@ -45,15 +45,12 @@ get_poi():
 * output: gzipped json
     * poi: List<Point>
 
-get_departures():
+send_feedback():
 * input: json via post
-    * lat: double
-    * lon: Double
-    * public_transport_provider : String
-    * session_id: String
-    + vehicles: List<String>
-* output: gzipped json
-    * departures: List<Departure>
+    * token:    String      See webserver/constants.py:supported_feedback_token_list
+    * message:  String
+    + sender:   String
+* output: None
 
 cancel_request():
 * input: json via post
@@ -69,10 +66,7 @@ get_status():
     * supported_map_version_list: List<Integer>
     * supported_language_list: List<String>             ["de", "en"]
     * supported_poi_category_list: List<String>
-    * supported_public_transport_provider_list: List<String>
     * maps: Dict<map_id:String,map_data:Dict>
-    * supported_indirection_factor_list: List<String> (deprecated in API Version 2)
-    * supported_way_class_list: List<String> (deprecated in API Version 2)
 
 
 
@@ -81,10 +75,16 @@ Change Log
 
 ### API ###
 
+Version 3:
+- Added: webserver function send_feedback()
+- Removed:
+    * webserver function get_departures()
+    * param "supported_public_transport_provider_list" in webserver function get_status()
+
 Version 2:
 - Changed: get_route param "allowed_way_classes" (Key-Value-Dict way_class_name:weight)
-- Ignore: get_route param "indirection_factor"
-- Deprecated: get_status params supported_indirection_factor_list, supported_way_class_list, maps[map_id]['development']
+- Removed: get_route param "indirection_factor"
+- Removed: get_status params supported_indirection_factor_list, supported_way_class_list, maps[map_id]['development']
 
 
 ### Map ###

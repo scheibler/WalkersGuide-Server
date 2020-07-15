@@ -88,18 +88,6 @@ def create_map_database(map_id):
     os.remove(Config().paths.get("shell_lock_file"))
 
 
-def start_public_transport_library():
-    executable = Config().paths.get("public_transport_library_executable")
-    gateway_port = Config().java.get("gateway_port")
-    if not os.path.exists(executable):
-        exit("Public transport library executable %s not available" % executable, prefix="")
-    elif gateway_port == 0:
-        exit("Public transport library gateway port not available", prefix="")
-    else:
-        child = Popen(["java", "-jar", executable, str(gateway_port)])
-        child.communicate()
-
-
 def start_webserver():
     webserver.start()
 
@@ -123,11 +111,6 @@ def main():
             help="Start a script to create a new map database thats already in the config file")
     create_database.add_argument(
             'map_id', nargs='?', help='The map id from config')
-    # start public transport library sub parser
-    subparsers.add_parser(
-            "start-public-transport-library",
-            description="Start public transport library",
-            help="Start public transport library")
     # start webserver
     subparsers.add_parser(
             "start-webserver",
@@ -137,8 +120,6 @@ def main():
     args = parser.parse_args()
     if args.action == "create-map-database":
         create_map_database(args.map_id)
-    elif args.action == "start-public-transport-library":
-        start_public_transport_library()
     elif args.action == "start-webserver":
         start_webserver()
 

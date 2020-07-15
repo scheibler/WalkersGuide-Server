@@ -3,6 +3,16 @@ Change Log
 
 
 
+v1.2.0: 2020-07-14
+------------------
+
+Shell script for database creation parallelized
+Webserver:
+    - API version 1 and 2 removed
+    - API version 3 added (send_feedbac added, pte removed)
+
+
+
 v1.1.1: 2020-01-05
 ------------------
 
