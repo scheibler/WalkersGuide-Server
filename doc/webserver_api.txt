@@ -6,7 +6,7 @@ API
 WalkersGuide-MapServer
 ----------------------
 
-Serverversion: 1.2.0
+Serverversion: 1.3.0
 
 get_route():
 * input: json via post

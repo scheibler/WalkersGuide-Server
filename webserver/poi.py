@@ -393,7 +393,10 @@ class POI:
                                 """
                                 tags->'amenity' = ANY(
                                     '{"crypt", "place_of_worship", "shelter"}')
-                                OR tags ? 'natural'
+                                OR tags->'natural' = ANY(
+                                    '{"glacier", "hot_spring", "spring", "volcano",
+                                    "peak", "cave_entrance", "rock", "stone"}')
+                                or (tags ? 'natural' and tags ? 'name')
                                 OR tags ? 'man_made'
                                 OR tags ? 'tourism'
                                 OR tags ? 'historic'
