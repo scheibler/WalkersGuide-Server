@@ -506,6 +506,43 @@ class PedestrianRoute:
         return route
 
 
+### hiking trails begin
+#    def calculate_route(self, relation_id, direction_forwards=True):
+#        # get relation members
+#        relation_members = self.selected_db.fetch_all(
+#                sql.SQL(
+#                    """
+#                    SELECT * FROM {i_table_name}
+#                        WHERE relation_id = {p_relation_id} AND member_role = ''
+#                        ORDER BY sequence_id {l_ASC_OR_DESC}
+#                    """
+#                    ).format(
+#                            i_table_name=sql.Identifier("relation_members"),
+#                            p_relation_id=sql.Placeholder(name='relation_id'),
+#                            l_ASC_OR_DESC=sql.Literal("ASC" if direction_forwards else "DESC")),
+#                    { "relation_id":relation_id})
+#
+#        way_node_map = {}
+#        for member in relation_members:
+#            if member.get("member_type").lower() == "n":
+#                way_node_map[None] = member.get(member_id")
+#
+#            elif member.get("member_type").lower() == "w":
+#                way_nodes = self.selected_db.fetch_all(
+#                        sql.SQL(
+#                            """
+#                            SELECT * FROM {i_table_name}
+#                                WHERE way_id = {p_way_id}
+#                                ORDER BY sequence_id {l_ASC_OR_DESC}
+#                            """
+#                            ).format(
+#                                    i_table_name=sql.Identifier("way_nodes"),
+#                                    p_way_id=sql.Placeholder(name='way_id'),
+#                                    l_ASC_OR_DESC=sql.Literal("ASC" if direction_forwards else "DESC")),
+#                            { "way_id":member.get("member_id")})
+### hiking trails end
+
+
     def create_description_for_route(self, route):
         route_length = 0
         number_of_intersections = 0

@@ -135,7 +135,7 @@ if [[ $? != 0 ]]; then
 fi
 
 # import poi and intersection tables in parallel
-parallel -- "$folder_name/task3-poi_table_import.sh" "$folder_name/task4-intersection_table_import.sh"
+parallel -- "$folder_name/task3-poi_table_import.sh" "$folder_name/task4-intersection_table_import.sh" "$folder_name/task5-hiking_trails_import.sh"
 if [[ $? != 0 ]]; then
     echo "\nError during parallel execution of poi_table_import and intersection_table_import"
     exit 1

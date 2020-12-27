@@ -90,6 +90,7 @@ class Translator:
 
         if category == "poi":
             if tag == "address": return "Adresse"
+            if tag == "hiking_trail": return "Wanderweg"
             if tag == "way_point": return "Wegpunkt"
 
         if category == "smoothness":
@@ -698,6 +699,7 @@ class Translator:
 
         if category == "poi":
             if tag == "address": return "Address"
+            if tag == "hiking_trail": return "Hiking trail"
             if tag == "way_point": return "Waypoint"
 
         if category == "smoothness":

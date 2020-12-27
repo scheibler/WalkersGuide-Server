@@ -1,6 +1,6 @@
 server_version = '1.2.0'
-supported_api_version_list = [ 3 ]
-supported_map_version_list = [ 2 ]
+supported_api_version_list = [ 3, 4 ]
+supported_map_version_list = [ 2, 3 ]
 supported_language_list = ["en", "de"]
 supported_feedback_token_list = ["question", "map_request", "pt_provider_request"]
 # routing constants
@@ -9,10 +9,10 @@ supported_route_point_object_list = ["point", "entrance", "gps", "intersection",
 supported_way_class_list = ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways", "steps"]
 # poi constants
 supported_poi_category_listp = ["transport_bus_tram", "transport_train_lightrail_subway",
-        "transport_airport_ferry_aerialway", "transport_taxi", "food", "entertainment",
-        "tourism", "nature", "finance", "shop", "health", "education", "public_service",
-        "all_buildings_with_name", "entrance", "surveillance", "bench", "trash", "bridge",
-        "named_intersection", "other_intersection", "pedestrian_crossings"]
+        "transport_airport_ferry_aerialway", "transport_taxi",
+        "food", "entertainment", "finance", "shop", "health", "education", "public_service",
+        "tourism", "all_buildings_with_name", "entrance", "surveillance", "bench", "trash",
+        "named_intersection", "other_intersection", "pedestrian_crossings", "bridge"]
 
 # webserver return codes
 class ReturnCode:
@@ -28,6 +28,7 @@ class ReturnCode:
     # map
     MAP_LOADING_FAILED = 555
     WRONG_MAP_SELECTED = 556
+    MAP_OUTDATED       = 557
     # poi
     NO_POI_TAGS_SELECTED = 560
     # route calculation

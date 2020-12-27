@@ -20,61 +20,102 @@ class POI:
         self.translator = Translator(user_language)
 
 
+    def get_hiking_trails(self, lat, lon, radius, order_by="closest"):
+        # deprecated: no hiking trails on map versions 1 and 2
+        if self.selected_db.map_version == 2:
+            raise WebserverException(
+                    ReturnCode.MAP_OUTDATED, "Hiking trails not available in map version 2")
+
+        # sql queries
+        # boundary box
+        boundary_box_query, boundary_box_query_params = self.get_boundary_box_query_and_params(lat, lon, radius)
+        # order by
+        if order_by == "start":
+            order_by_query = sql.SQL("ORDER BY distance_to_start")
+        elif order_by == "destination":
+            order_by_query = sql.SQL("ORDER BY distance_to_destination")
+        else:
+            order_by_query = sql.SQL("ORDER BY distance_to_closest")
+
+        table_name = "hiking_trails"
+        result = self.selected_db.fetch_all(
+                sql.SQL(
+                    """
+                    WITH closest_trails AS (
+                        SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                    SELECT
+                        relation_id,
+                        tags,
+                        ST_Distance(
+                            ST_ClosestPoint(geom, ST_SetSrid(ST_MakePoint({p_lon}, {p_lat}),4326))::geography,
+                            ST_SetSrid(ST_MakePoint({p_lon}, {p_lat}),4326)::geography
+                        ) AS distance_to_closest,
+                        ST_Distance(
+                            ST_PointN(geom, 1)::geography,
+                            ST_SetSrid(ST_MakePoint({p_lon}, {p_lat}),4326)::geography
+                        ) AS distance_to_start,
+                        ST_Distance(
+                            ST_PointN(geom, -1)::geography,
+                            ST_SetSrid(ST_MakePoint({p_lon}, {p_lat}),4326)::geography
+                        ) AS distance_to_destination
+                    FROM closest_trails {c_order_by_query}
+                    """
+                    ).format(
+                            i_table_name=sql.Identifier(table_name),
+                            c_where_clause_query=boundary_box_query,
+                            p_lon=sql.Placeholder(name='lon'),
+                            p_lat=sql.Placeholder(name='lat'),
+                            c_order_by_query=order_by_query),
+                    { **boundary_box_query_params, **{"lat":lat, "lon":lon}})
+
+        trail_list = []
+        for row in result:
+            # parse tags
+            trail_tags = self.parse_hstore_column(row['tags'])
+            # create trail
+            trail = {}
+            trail['relation_id'] = int(row['relation_id'])
+            trail['name'] = trail_tags.get(
+                    "name", self.translator.translate("poi", "hiking_trail"))
+            # distances
+            trail['distance_to_closest'] = int(row['distance_to_closest'])
+            trail['distance_to_start'] = int(row['distance_to_start'])
+            trail['distance_to_destination'] = int(row['distance_to_destination'])
+            # optional attributes
+            if "description" in trail_tags:
+                trail['description'] = trail_tags.get("description")
+            elif "note" in trail_tags:
+                trail['description'] = trail_tags.get("note")
+            if "distance" in trail_tags:
+                trail['length'] = trail_tags.get("distance")
+            if "symbol" in trail_tags:
+                trail['symbol'] = trail_tags.get("symbol")
+            elif "osmc:symbol" in trail_tags:
+                trail['symbol'] = trail_tags.get("osmc:symbol")
+            # add to list
+            trail_list.append(trail)
+        return trail_list
+
+
     def get_poi(self, lat, lon, radius, number_of_results, tags, search):
         ts = time.time()
         poi_list = []
-        where_clause_param_dict = {}
 
-        # check params
-        # latitude
-        try:
-            if lat < -180 or lat > 180:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "Latitude out of range")
-        except TypeError as e:
-            if lat:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "Invalid latitude")
-            else:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "No latitude")
-        # longitude
-        try:
-            if lon < -180 or lon > 180:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "longitude out of range")
-        except TypeError as e:
-            if lon:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "Invalid longitude")
-            else:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "No longitude")
-        # radius
-        try:
-            if radius <= 0:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "radius <= 0")
-        except TypeError as e:
-            if radius:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "Invalid radius")
-            else:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "No radius")
-        # number_of_results
-        try:
-            if number_of_results <= 0:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "number_of_results <= 0")
-        except TypeError as e:
-            if number_of_results:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "Invalid number_of_results")
-            else:
-                raise WebserverException(
-                        ReturnCode.BAD_REQUEST, "No number_of_results")
-        # tags
+        # sql queries
+        # boundary box
+        boundary_box_query, boundary_box_query_params = self.get_boundary_box_query_and_params(lat, lon, radius)
+        # order_by
+        order_by_and_limit_query = sql.SQL(
+                """
+                ORDER BY ST_Distance(geom::geography, 'POINT({p_lon} {p_lat})'::geography)
+                LIMIT {p_number_of_results}
+                """
+                ).format(
+                        p_lon=sql.Placeholder(name='lon'),
+                        p_lat=sql.Placeholder(name='lat'),
+                        p_number_of_results=sql.Placeholder(name='number_of_results'))
+
+        # parse tags
         if not tags:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "No tags")
@@ -91,70 +132,32 @@ class POI:
             if not tag_list:
                 raise WebserverException(
                         ReturnCode.NO_POI_TAGS_SELECTED, "tag_list is empty")
-        # search
-        if not search:
-            search = ""
-        elif not isinstance(search, str):
-            raise WebserverException(
-                    ReturnCode.BAD_REQUEST, "Invalid search")
 
-        # create boundary box
-        # sql query
-        boundary_box_query = sql.SQL(
-                """
-                geom && ST_MakeEnvelope(
-                        {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
-                """
-                ).format(
-                        p_boundaries_left=sql.Placeholder(name='boundaries_left'),
-                        p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
-                        p_boundaries_right=sql.Placeholder(name='boundaries_right'),
-                        p_boundaries_top=sql.Placeholder(name='boundaries_top'))
-        # params
-        boundaries = geometry.get_boundary_box(lat, lon, radius)
-        where_clause_param_dict['boundaries_left'] = boundaries['left']
-        where_clause_param_dict['boundaries_bottom'] = boundaries['bottom']
-        where_clause_param_dict['boundaries_right'] = boundaries['right']
-        where_clause_param_dict['boundaries_top'] = boundaries['top']
-
-        # lat/lon inside selected map?
+        # query params
+        where_clause_param_dict = {
+                **boundary_box_query_params, **{"lat":lat, "lon":lon}}
+        # number of results
         try:
-            self.selected_db.fetch_one(
-                    sql.SQL(
-                        """
-                        SELECT * FROM {i_table_name} WHERE {c_boundary_box_query} LIMIT 1
-                        """
-                        ).format(
-                            i_table_name=sql.Identifier("nodes"),
-                            c_boundary_box_query=boundary_box_query),
-                        where_clause_param_dict)
-        except DBControl.DatabaseResultEmptyError as e:
-            raise WebserverException(ReturnCode.WRONG_MAP_SELECTED)
-
-        # search term
-        # sql query: see customized queries below
-        # param
+            if number_of_results > 0:
+                where_clause_param_dict['number_of_results'] = number_of_results
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "number_of_results <= 0")
+        except TypeError as e:
+            if number_of_results:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid number_of_results")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No number_of_results")
+        # add escaped search string
         if search:
-            where_clause_param_dict['search_term'] = '%{}%'.format(
-                    search.replace(" ", "%").lower())
-        else:
-            where_clause_param_dict['search_term'] = ""
-
-        # order by lat/lon and limit to number of results
-        # sql query
-        order_by_and_limit_query = sql.SQL(
-                """
-                ORDER BY ST_Distance(geom::geography, 'POINT({p_lon} {p_lat})'::geography)
-                LIMIT {p_number_of_results}
-                """
-                ).format(
-                        p_lon=sql.Placeholder(name='lon'),
-                        p_lat=sql.Placeholder(name='lat'),
-                        p_number_of_results=sql.Placeholder(name='number_of_results'))
-        # params
-        where_clause_param_dict['lon'] = lon
-        where_clause_param_dict['lat'] = lat
-        where_clause_param_dict['number_of_results'] = number_of_results
+            if isinstance(search, str):
+                where_clause_param_dict['search_term'] = '%{}%'.format(
+                        search.replace(" ", "%").lower())
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid search")
 
 
         ###############
@@ -241,10 +244,10 @@ class POI:
                             sql.SQL(
                                 """
                                    tags->'amenity' = 'bus_station'
-                                OR (tags->'public_transport' = 'stop_position'
+                                OR (tags->'public_transport' = ANY('{"platform", "stop_position"}')
                                     AND (tags->'bus' = 'yes' OR tags->'highway' = 'bus_stop'))
                                 OR (tags->'highway' = 'bus_stop' AND NOT tags ? 'public_transport')
-                                OR (tags->'public_transport' = 'stop_position'
+                                OR (tags->'public_transport' = ANY('{"platform", "stop_position"}')
                                     AND (tags->'tram' = 'yes' OR tags->'railway' = 'tram_stop'))
                                 OR (tags->'railway' = 'tram_stop' AND NOT tags ? 'public_transport')
                                 """))
@@ -299,8 +302,10 @@ class POI:
                 if "name" not in station_tags:
                     # a station without a name is not very usefull
                     continue
-                if "public_transport" not in station_tags:
-                    # legacy mode for stations without stop_position
+                if "public_transport" not in station_tags \
+                        or station_tags.get("public_transport") != "stop_position":
+                    # check if there is also a stop position for the station with
+                    # public_transport != stop_position or no public_transport entry at all
                     station_exists_result = self.selected_db.fetch_one(
                             sql.SQL(
                                 """
@@ -309,7 +314,7 @@ class POI:
                                     FROM {i_table_name}
                                     WHERE {c_where_clause_query}
                                         and tags->'name' = {p_station_name}
-                                        and tags ? 'public_transport')
+                                        and tags->'public_transport' = 'stop_position')
                                 as exists
                                 """
                                 ).format(
@@ -320,7 +325,8 @@ class POI:
                     if station_exists_result.get("exists"):
                         # the station already is represented by another one with the same name
                         # and a stop_position tag, so skip this one
-                        logging.debug("station with id {} already exists, skip".format(station_id))
+                        logging.debug("station with id {} ({}) already exists with a stop position, skip"
+                                .format(station_id, station_tags.get("name")))
                         continue
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
@@ -337,7 +343,7 @@ class POI:
         # poi
         #####
         poi_tag_list = ["transport_airport_ferry_aerialway", "transport_taxi",
-                "food", "entertainment", "tourism", "nature", "finance", "shop",
+                "food", "entertainment", "tourism", "finance", "shop",
                 "health", "education", "public_service", "all_buildings_with_name",
                 "surveillance", "bench", "trash", "bridge"]
         if [True for tag in tag_list if tag in poi_tag_list]:
@@ -365,18 +371,21 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"cafe", "bbq", "fast_food", "restaurant",
-                                    "bar", "pub", "drinking_water", "biergarten", "ice_cream"}')
+                                    '{"cafe", "canteen", "bbq", "fast_food",
+                                    "food_court", "restaurant", "hookah_lounge", "bar",
+                                    "pub", "drinking_water", "biergarten", "ice_cream"}')
                                 """))
                 if t == "entertainment":
                     tag_query_list.append(
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"arts_centre", "Brothel", "Casino", "Cinema", "community_centre",
-                                    "fountain", "planetarium", "social_centre", "nightclub",
+                                    '{"arts_centre", "Brothel", "Casino", "gambling",
+                                    "Cinema", "community_centre", "bar", "pub", "fountain",
+                                    "planetarium", "social_centre", "social_club", "nightclub",
                                     "stripclub", "studio", "swingerclub", "theatre", "youth_centre"}')
                                 OR tags ? 'leisure'
+                                OR tags->'tourism' = 'museum'
                                 """))
                 if t == "tourism":
                     tag_query_list.append(
@@ -384,16 +393,10 @@ class POI:
                                 """
                                 tags->'amenity' = ANY(
                                     '{"crypt", "place_of_worship", "shelter"}')
+                                OR tags ? 'natural'
+                                OR tags ? 'man_made'
                                 OR tags ? 'tourism'
                                 OR tags ? 'historic'
-                                """))
-                if t == "nature":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                tags->'natural' = ANY(
-                                    '{"water", "glacier", "beach", "spring", "volcano",
-                                    "peak", "cave_entrance", "rock", "stone"}')
                                 """))
                 if t == "finance":
                     tag_query_list.append(
@@ -1264,6 +1267,10 @@ class POI:
                 entrance = self.create_entrance(row['entrance_id'], row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['label'])
                 poi['entrance_list'].append(entrance)
+
+        # other attributes
+        if "ele" in tags:
+            poi['ele'] = tags['ele']
         return poi
 
 
@@ -1358,6 +1365,80 @@ class POI:
     #####
     # some helper functions
     #####
+
+    def get_boundary_box_query_and_params(self, lat, lon, radius):
+        # check params
+        try:
+            if lat < -180 or lat > 180:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Latitude out of range")
+        except TypeError as e:
+            if lat:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid latitude")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No latitude")
+        # longitude
+        try:
+            if lon < -180 or lon > 180:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "longitude out of range")
+        except TypeError as e:
+            if lon:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid longitude")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No longitude")
+        # radius
+        try:
+            if radius <= 0:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "radius <= 0")
+        except TypeError as e:
+            if radius:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "Invalid radius")
+            else:
+                raise WebserverException(
+                        ReturnCode.BAD_REQUEST, "No radius")
+
+        # boundary box sql query
+        boundary_box_query = sql.SQL(
+                """
+                geom && ST_MakeEnvelope(
+                        {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
+                """
+                ).format(
+                        p_boundaries_left=sql.Placeholder(name='boundaries_left'),
+                        p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
+                        p_boundaries_right=sql.Placeholder(name='boundaries_right'),
+                        p_boundaries_top=sql.Placeholder(name='boundaries_top'))
+        # params
+        boundaries = geometry.get_boundary_box(lat, lon, radius)
+        boundary_box_query_params = {
+                'boundaries_left' : boundaries['left'],
+                'boundaries_bottom' : boundaries['bottom'],
+                'boundaries_right' : boundaries['right'],
+                'boundaries_top' : boundaries['top'] }
+
+        # lat/lon inside selected map?
+        try:
+            self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT * FROM {i_table_name} WHERE {c_boundary_box_query} LIMIT 1
+                        """
+                        ).format(
+                            i_table_name=sql.Identifier("nodes"),
+                            c_boundary_box_query=boundary_box_query),
+                        boundary_box_query_params)
+        except DBControl.DatabaseResultEmptyError as e:
+            raise WebserverException(ReturnCode.WRONG_MAP_SELECTED)
+
+        return (boundary_box_query, boundary_box_query_params)
+
 
     def parse_hstore_column(self, hstore_string):
         hstore = {}

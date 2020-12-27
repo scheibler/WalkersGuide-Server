@@ -31,6 +31,17 @@ get_next_intersections_for_way():
 * output: gzipped json
     * next_intersections: List<Point>
 
+get_hiking_trails():
+* input: json via post
+    * map_id: String
+    * session_id: String
+    * lat: Double
+    * lon: Double
+    * radius: Integer
+    + language: String      ["de", "en"]
+* output: gzipped json
+    * hiking_trails: List<HikingTrail>
+
 get_poi():
 * input: json via post
     * map_id: String
@@ -75,6 +86,9 @@ Change Log
 
 ### API ###
 
+Version 4:
+- Added: webserver function get_hiking_trails()
+
 Version 3:
 - Added: webserver function send_feedback()
 - Removed:
@@ -88,6 +102,9 @@ Version 2:
 
 
 ### Map ###
+
+Version 3:
+- New table: hiking_trails
 
 Version 2:
 - Removed: Table "way_class_weights"

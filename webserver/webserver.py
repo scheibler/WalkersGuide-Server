@@ -202,6 +202,50 @@ class RoutingWebService():
     @cherrypy.expose
     @cherrypy.tools.json_in()
     @cherrypy.tools.json_out()
+    def get_hiking_trails(self):
+        # parse json encoded input
+        try:
+            input = cherrypy.request.json
+        except AttributeError as e:
+            cherrypy.response.status = ReturnCode.BAD_REQUEST
+            logging.error(e)
+            return
+        else:
+            logging.info("Query: get_hiking_trails\nParams: {}".format(input))
+        # create session id
+        try:
+            session_id = self.create_session_id(input)
+        except WebserverException as e:
+            cherrypy.response.status = e.return_code
+            logging.error(e)
+            return
+        else:
+            Config().add_session_id(session_id)
+        # get trails
+        result = {}
+        try:
+            poi = POI(
+                    input.get("map_id"), session_id, input.get("language"))
+            trail_list = poi.get_hiking_trails(
+                    input.get("lat"), input.get("lon"), input.get("radius"))
+        except WebserverException as e:
+            cherrypy.response.status = e.return_code
+            logging.error(e)
+        except Exception as e:
+            cherrypy.response.status = ReturnCode.INTERNAL_SERVER_ERROR
+            logging.critical(e, exc_info=True)
+            send_email(
+                    "Error in function get_hiking_trails", traceback.format_exc())
+        else:
+            result['hiking_trails'] = trail_list
+        finally:
+            Config().confirm_removement_of_session_id(session_id)
+        return result
+
+
+    @cherrypy.expose
+    @cherrypy.tools.json_in()
+    @cherrypy.tools.json_out()
     def send_feedback(self):
         # parse json encoded input
         try:
