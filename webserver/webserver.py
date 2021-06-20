@@ -46,12 +46,13 @@ class RoutingWebService():
         <style>
             body {{font: normal 100.01% Helvetica, Arial, sans-serif;}}
             h1   {{font-size: 1.2em;}}
+            h2   {{font-size: 1.1em;}}
         </style>
     </head>
     <body>
         <h1>{}</h1>
         <p>Version: {}</p>
-        <p>Available maps:</p>
+        <h2>Available maps:</h2>
         <ul>
 {}
         </ul>
