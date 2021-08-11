@@ -8,6 +8,7 @@ import configobj
 import datetime
 import logging, logging.handlers, logging.config
 import os
+import re
 import shutil
 import sys
 import time
@@ -347,16 +348,45 @@ class Config:
                 exit('Missing main section "[maps]".')
             self.maps = {}
             for map_id, map_data in self.config["maps"].items():
-                # name and description
-                if not map_data.get("name"):
-                    exit('map %s: Missing name.' % map_id)
-                if not map_data.get("description"):
-                    exit('map %s: Missing description.' % map_id)
-                # url or url list devided by ;
-                if not map_data.get("urls"):
+                # name
+                name = map_data.get("name")
+                if not name or not type(name) is str:
+                    exit('map %s: Missing or malformed name.' % map_id)
+                map_data['name'] = name
+
+                # description
+                description = map_data.get("description")
+                if not description or not type(description) is str:
+                    exit('map %s: Missing or malformed description.' % map_id)
+                map_data['description'] = ' '.join(
+                        [ x.strip() for x in description.splitlines() ])
+
+                # url list
+                urls = map_data.get("urls")
+                if not urls:
                     exit('map %s: Missing urls.' % map_id)
-                elif type(map_data.get("urls")) is not list:
-                    map_data['urls'] = [ map_data.get("urls") ]
+                elif not type(urls) in [ list, str ]:
+                    exit('map %s: urls attribute is neither string or list.' % map_id)
+                url_list = list()
+                for url in urls if type(urls) is list else urls.splitlines():
+                    is_valid = True
+                    try:
+                        url = url.strip()
+                    except AttributeError:
+                        is_valid = False
+                    else:
+                        if url:
+                            if re.match(r'(http|https)://.*\.pbf', url):
+                                if url not in url_list:
+                                    url_list.append(url)
+                            else:
+                                is_valid = False
+                    if not is_valid:
+                        exit('map %s: url %s is malformed. Format: http[s]://url.pbf' % (map_id, url))
+                if not url_list:
+                    exit('map %s: url list is empty.' % map_id)
+                map_data['urls'] = url_list
+
                 # add to maps dict
                 self.maps[map_id] = map_data
 

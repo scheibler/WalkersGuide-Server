@@ -30,8 +30,20 @@ password = PASSWORD
 [maps]
 
 [[germany]]
+# name (no comma char allowed)
 name = Germany
+# description:
+#   either: description = Single line without "comma" char
+#   or:     description = """A description with a , and something else"""
+#   or:     description = """Something too long
+#                         for a single line"""
 description = Map of Germany
-# url or list of urls, separated by ,
+# urls:
+#   either: urls = url1
+#   or:     urls = url1, url2
+#   or:     urls = """
+#                  url1
+#                  url2
+#                  """
 urls = https://download.geofabrik.de/europe/germany-latest.osm.pbf
 
