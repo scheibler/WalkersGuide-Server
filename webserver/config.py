@@ -169,6 +169,7 @@ class Config:
             self.database['map_info'] = "map_info"
             self.database['routing_prefix'] = "routing"
             self.database['routing_table'] = "%s_2po_4pgr" % self.database.get("routing_prefix")
+            self.database['access_statistics_table'] = "access_statistics"
 
             # webserver settings
             if "webserver" not in self.config:

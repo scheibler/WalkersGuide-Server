@@ -4,7 +4,7 @@
 import logging, math, time
 from psycopg2 import sql
 
-from . import constants, geometry
+from . import constants, geometry, statistics
 from .config import Config
 from .constants import ReturnCode
 from .db_control import DBControl
@@ -648,6 +648,9 @@ class POI:
         # log
         te = time.time()
         logging.debug("gesamtzeit: %.2f;   anzahl entries = %d" % ((te-ts), len(poi_list)))
+
+        # add to access statistics and return
+        statistics.add_to_access_statistics(self.selected_db, self.session_id)
         return filtered_poi_list
 
 
@@ -1060,6 +1063,7 @@ class POI:
                     street['way_id'],
                     self.parse_hstore_column(street['way_tags']),
                     street['direction'] == "B")
+            sub_segment['intersection_node_id'] = osm_id
             sub_segment['next_node_id'] = street['node_id']
             sub_segment['type'] = "footway_intersection"
             sub_segment['intersection_name'] = intersection['name']

@@ -9,7 +9,7 @@ General
 *: attribute is mandatory
 +: attribute is optional
 
-WalkersGuide-Server version 1.3.1
+WalkersGuide-Server version 1.3.2
 
 
 
@@ -97,11 +97,6 @@ station:                        extends from poi
 + station_id                    Long            station id from deutsche bahn api
                                 [station_id >= 0, default: unknown = -1]
 
-Departure:
-* nr:           String      line number
-* to:           String      direction
-* time:         Long        departure time (unix timestamp)
-
 line:
 * nr:       String      line number
 + to:       String      direction
@@ -115,9 +110,6 @@ segment:
 * type:                     "segment"
 * sub_type:                 String
 * name:                     String
-
-footway:                        extends from segment
-* type:                     "footway"
 * bearing:          Integer         Bearing of the way segment
                     [0 <= bearing <= 359, default: unknown = -1]
 + description:              String          Additional description
@@ -143,15 +135,15 @@ footway:                        extends from segment
 + width:                    Double          way width of way
                                 [width >= 0.0, default: unknown = -1.0]
 
-intersection_segment:           extends from footway
+intersection_segment:           extends from segment
 * type:                         "footway_intersection"
 * intersection_name:            String
-+ next_node_id:                 Long            Next node id from osm database
-                                    [next_node_id >= 0, default: unknown = -1]
-+ part_of_previous_route_segment    Boolean         part of the previous route segment
-+ part_of_next_route_segment    Boolean         part of the next route segment
+* intersection_node_id:         Long            Node id of parent intersection from osm database
+* next_node_id:                 Long            Next node id from osm database
++ part_of_previous_route_segment    Boolean         is part of the previous route segment
++ part_of_next_route_segment    Boolean         is part of the next route segment
 
-route_segment:                  extends from footway
+route_segment:                  extends from segment
 * type:                     "footway_route"
 * distance:         Integer         Distance of the segment between two route points
                     [distance >= 0, default: unknown = -1]

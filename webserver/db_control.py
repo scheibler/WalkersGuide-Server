@@ -31,6 +31,17 @@ class DBControl():
                     'No map id')
         self.db_name = map_id
 
+        # create access statistics table, if it doesn't exist yet
+        self.edit_database(
+                sql.SQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS {i_access_statistics_table} (
+                        session_id TEXT UNIQUE NOT NULL,
+                        timestamp BIGINT NOT NULL)
+                    """
+                    ).format(
+                        i_access_statistics_table=sql.Identifier(Config().database.get("access_statistics_table"))))
+
         # query map version and creation date from database
         map_info = self.fetch_one(
                 sql.SQL(

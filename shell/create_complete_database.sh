@@ -157,6 +157,14 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
+# rescue access statistics table from active database
+check_if_access_statistics_table_exists_command="SELECT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename  = '$db_access_statistics_table');"
+if [ "$( psql -A -t -h $server_address -U $user_name -d $db_active_name -c "$check_if_access_statistics_table_exists_command" )" = 't' ]; then
+    pg_dump -h $server_address -U $user_name -d $db_active_name -t $db_access_statistics_table \
+        | psql -h $server_address -U $user_name -d $db_tmp_name
+    echo -e "\nRescued access statistics table"
+fi
+
 # clean up new database
 echo -e "\nanalyse database -- started at $(get_timestamp)"
 psql -h $server_address -U $user_name -d $db_tmp_name -c "VACUUM ANALYZE;"

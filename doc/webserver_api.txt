@@ -6,6 +6,13 @@ API
 WalkersGuide-MapServer
 ----------------------
 
+
+Serverversion: 1.3.2
+
+intersection_segment: New mandatory parameter "intersection_node_id"
+
+
+
 Serverversion: 1.3.1
 
 get_route():

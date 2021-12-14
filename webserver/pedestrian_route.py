@@ -4,7 +4,7 @@
 import json, logging, re, time
 from psycopg2 import sql
 
-from . import constants, geometry
+from . import constants, geometry, statistics
 from .config import Config
 from .constants import ReturnCode
 from .db_control import DBControl
@@ -106,6 +106,9 @@ class PedestrianRoute:
                 except (IndexError, KeyError):
                     route[i]['turn'] = -1
         logging.debug(json.dumps(route, indent=4))
+
+        # add to access statistics and return
+        statistics.add_to_access_statistics(self.selected_db, self.session_id)
         return route
 
 

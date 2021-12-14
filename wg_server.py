@@ -1,16 +1,16 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-
-import argparse
-import datetime
-import os
+import argparse, datetime, logging, time
+import os, sys
 from subprocess import Popen, STDOUT
 
+import webserver.statistics as statistics
 import webserver.webserver as webserver
 from webserver.config import Config
+from webserver.db_control import DBControl
 from webserver.constants import server_version, supported_api_version_list, supported_map_version_list
-from webserver.helper import exit, send_email
+from webserver.helper import exit, pretty_print_table, send_email
 
 
 def create_map_database(map_id):
@@ -46,6 +46,7 @@ def create_map_database(map_id):
     shell_config += ['db_tmp_name="%s_tmp"' % map_id]
     shell_config += ['db_prefix="%s"' % Config().database.get("routing_prefix")]
     shell_config += ['db_routing_table="%s"' % Config().database.get("routing_table")]
+    shell_config += ['db_access_statistics_table="%s"' % Config().database.get("access_statistics_table")]
     shell_config += ['db_map_info="%s"' % Config().database.get("map_info")]
     shell_config += ['db_map_version=%s' % supported_map_version_list[-1]]
     shell_config += ['export PGPASSWORD=$password']
@@ -92,6 +93,39 @@ def start_webserver():
     webserver.start()
 
 
+def show_statistics():
+    access_statistics = dict()
+    for map_id, map_data in Config().maps.items():
+        try:
+            access_statistics[map_data['name']] = \
+                    statistics.get_access_statistics(DBControl(map_id))
+        except Exception as e:
+            logging.error(
+                    "Failed to get access statistics for map {}\nError: {}".format(map_id, e))
+            sys.exit(1)
+
+    table = list()
+    # header
+    table.append(
+            ["map", "last 30 days", "last six months", "last year", "total"])
+    # body
+    current_timestamp = int(time.time())
+    for map_name, timestamp_list in access_statistics.items():
+        last_thirty_days = last_six_months = last_year = 0
+        for timestamp in timestamp_list:
+            if current_timestamp - timestamp < 30*24*60*60:
+                last_thirty_days += 1
+            if current_timestamp - timestamp < 182*24*60*60:
+                last_six_months += 1
+            if current_timestamp - timestamp < 365*24*60*60:
+                last_year += 1
+        total = len(timestamp_list)
+        # add
+        table.append(
+                [map_name, last_thirty_days, last_six_months, last_year, total])
+    print(pretty_print_table(table))
+
+
 def print_version_info():
     return "WalkersGuide-Server version: %s     (API versions: %s;   Map versions: %s)" \
             % (server_version, ','.join([str(x) for x in supported_api_version_list]),
@@ -116,12 +150,19 @@ def main():
             "start-webserver",
             description="Start webserver for client communication",
             help="Start webserver for client communication")
+    # statistics
+    subparsers.add_parser(
+            "statistics",
+            description="Show usage statistics",
+            help="Show usage statistics")
 
     args = parser.parse_args()
     if args.action == "create-map-database":
         create_map_database(args.map_id)
     elif args.action == "start-webserver":
         start_webserver()
+    elif args.action == "statistics":
+        show_statistics()
 
 
 if __name__ == '__main__':
