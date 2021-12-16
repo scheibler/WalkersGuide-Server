@@ -6,7 +6,7 @@ source "$folder_name/configuration.sh"
 source "$folder_name/helper_functions.sh"
 
 echo -e "\nImport hiking trails table -- started at $(get_timestamp)"
-psql -h $server_address -U $user_name -d $db_tmp_name -q -X -v ON_ERROR_STOP=1 \
+psql -d $db_tmp_name -q -X -v ON_ERROR_STOP=1 \
     -f "$sql_files_folder/hiking_trails.sql"
 if [[ $? != 0 ]]; then
     echo "Error during hiking trails import"

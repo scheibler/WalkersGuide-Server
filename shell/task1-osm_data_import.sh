@@ -17,7 +17,7 @@ fi
 # import
 echo -e "\nImport dumps into database -- started at $(get_timestamp)"
 cd "$osm_data_temp_subfolder"
-psql -h $server_address -U $user_name -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
+psql -d $db_tmp_name -X -v ON_ERROR_STOP=1 \
     -f "$sql_files_folder/pgsnapshot/pgsnapshot_load_0.6.sql"
 if [[ $? != 0 ]]; then
     echo "Error during osm data import"

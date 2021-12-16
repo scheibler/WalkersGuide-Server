@@ -241,69 +241,68 @@ class PedestrianRoute:
 
         # route calculation
         best_route = None
-        if len(start_vertex_list) < len(dest_vertex_list):
-            max_vertex_list_length = len(dest_vertex_list)
-        else:
-            max_vertex_list_length = len(start_vertex_list)
+        max_vertex_list_length = min(
+                15, max(len(start_vertex_list), len(dest_vertex_list)))
         for x in range(0, max_vertex_list_length):
             for y in range(0, x+1):
+
+                def calculate(start_vertex_tuple, dest_vertex_tuple):
+                    result = self.selected_db.fetch_all(
+                            sql.SQL(
+                                """
+                                SELECT seq, node, edge, cost FROM pgr_dijkstra(
+                                    'SELECT id, source, target, cost from {i_temp_routing_table}',
+                                    {p_start_vertex}, {p_dest_vertex}, false)
+                                """
+                                ).format(
+                                    i_temp_routing_table=sql.Identifier(self.temp_routing_table_name),
+                                    p_start_vertex=sql.Placeholder(name='start_vertex'),
+                                    p_dest_vertex=sql.Placeholder(name='dest_vertex')),
+                                {   "start_vertex" : start_vertex_tuple.point_id,
+                                    "dest_vertex"  : dest_vertex_tuple.point_id })
+                    if result:
+                        return PedestrianRoute.RawRoute(
+                                result, start_vertex_tuple, dest_vertex_tuple)
+                    return None
+
                 if x < len(start_vertex_list) and y < len(dest_vertex_list):
                     logging.info("{} / {}".format(x,y))
-                    result = self.selected_db.fetch_all(
-                            sql.SQL(
-                                """
-                                SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(
-                                    'SELECT id, source, target, cost from {i_temp_routing_table}',
-                                    {p_start_vertex}, {p_dest_vertex}, false, false)
-                                """
-                                ).format(
-                                    i_temp_routing_table=sql.Identifier(self.temp_routing_table_name),
-                                    p_start_vertex=sql.Placeholder(name='start_vertex'),
-                                    p_dest_vertex=sql.Placeholder(name='dest_vertex')),
-                                {"start_vertex":start_vertex_list[x].point_id,
-                                    "dest_vertex":dest_vertex_list[y].point_id})
-                    if result:
-                        best_route = PedestrianRoute.RawRoute(result, start_vertex_list[x], dest_vertex_list[y])
+                    best_route = calculate(
+                            start_vertex_list[x], dest_vertex_list[y])
+                    if best_route:
                         break
+
                 if y < len(start_vertex_list) and x < len(dest_vertex_list) and x != y:
                     logging.info("{} / {}".format(y,x))
-                    result = self.selected_db.fetch_all(
-                            sql.SQL(
-                                """
-                                SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(
-                                    'SELECT id, source, target, cost from {i_temp_routing_table}',
-                                    {p_start_vertex}, {p_dest_vertex}, false, false)
-                                """
-                                ).format(
-                                    i_temp_routing_table=sql.Identifier(self.temp_routing_table_name),
-                                    p_start_vertex=sql.Placeholder(name='start_vertex'),
-                                    p_dest_vertex=sql.Placeholder(name='dest_vertex')),
-                                {"start_vertex":start_vertex_list[y].point_id,
-                                    "dest_vertex":dest_vertex_list[x].point_id})
-                    if result:
-                        best_route = PedestrianRoute.RawRoute(result, start_vertex_list[y], dest_vertex_list[x])
+                    best_route = calculate(
+                            start_vertex_list[y], dest_vertex_list[x])
+                    if best_route:
                         break
+
                 # cancel
                 if Config().has_session_id_to_remove(self.session_id):
                     raise WebserverException(ReturnCode.CANCELLED_BY_CLIENT)
-            # break outer loop
-            if best_route:
-                break
+
+            # outer loop, just break, if a route was found
+            else:
+                continue  # only executed if the inner loop did NOT break
+            break  # only executed if the inner loop DID break
+
         # error handling
         if not best_route:
             result = self.selected_db.fetch_all(
                     sql.SQL(
                         """
-                        SELECT seq, id1 AS node, id2 AS edge_id, cost FROM pgr_dijkstra(
+                        SELECT seq, node, edge, cost FROM pgr_dijkstra(
                             'SELECT id, source, target, km AS cost from {i_temp_routing_table}',
-                            {p_start_vertex}, {p_dest_vertex}, false, false)
+                            {p_start_vertex}, {p_dest_vertex}, false)
                         """
                         ).format(
                             i_temp_routing_table=sql.Identifier(self.temp_routing_table_name),
                             p_start_vertex=sql.Placeholder(name='start_vertex'),
                             p_dest_vertex=sql.Placeholder(name='dest_vertex')),
-                        {"start_vertex":start_vertex_list[0].point_id,
-                            "dest_vertex":dest_vertex_list[0].point_id})
+                        {   "start_vertex" : start_vertex_list[0].point_id,
+                            "dest_vertex"  : dest_vertex_list[0].point_id })
             if result:
                 raise WebserverException(ReturnCode.TOO_MANY_WAY_CLASSES_IGNORED)
             else:
@@ -313,17 +312,17 @@ class PedestrianRoute:
         last_target_id = -1
         reverse = False
         for r in best_route.route:
-            if r['edge_id'] == -1:
+            if r['edge'] == -1:
                 continue
             part = self.selected_db.fetch_one(
                     sql.SQL(
                         """
-                        SELECT * FROM {i_temp_routing_table} WHERE id={p_edge_id}
+                        SELECT * FROM {i_temp_routing_table} WHERE id={p_edge}
                         """
                         ).format(
                             i_temp_routing_table=sql.Identifier(self.temp_routing_table_name),
-                            p_edge_id=sql.Placeholder(name='edge_id')),
-                        {"edge_id":r['edge_id']})
+                            p_edge=sql.Placeholder(name='edge')),
+                        {"edge" : r['edge']})
 
             # exception for the first route segment
             # add start point of route first

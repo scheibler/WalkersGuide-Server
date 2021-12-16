@@ -78,7 +78,7 @@ ANALYSE $db_routing_table;"
 echo -e "$commands" >> "$db_prefix/$db_routing_table.sql"
 
 # import data into database
-psql -h $server_address -U $user_name -d $db_tmp_name -1 -q -X -v ON_ERROR_STOP=1 \
+psql -d $db_tmp_name -1 -q -X -v ON_ERROR_STOP=1 \
     -f "$db_prefix/$db_routing_table.sql"
 if [[ $? != 0 ]]; then
     echo "\nError during routing table import"

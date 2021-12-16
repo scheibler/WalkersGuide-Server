@@ -36,17 +36,16 @@ route creation functions and returns the results to the client.
 Installation
 ------------
 
-This section describes the installation process of the required software. The instructions cover the
-Debian Buster operating system.
+This section lists the required steps to install the WalkersGuide server under Debian 11 (Bullseye).
 
 
 ### Postgresql, Postgis and pgrouting ###
 
-Install Postgresql, Postgis (an extension to handle spacial data types like points and lines) and
-pgrouting. You may use every Postgresql version >= 9.1 and Postgis version >= 2.0:
+Install Postgresql, Postgis (an extension to handle spacial data types like points and lines) and pgrouting.
+You must at least use Postgresql >= 11, Postgis >= 2.5 and pgrouting >= 2.5:
 
 ```
-root# apt-get install postgresql-11 postgresql-11-postgis-2.5 postgresql-11-pgrouting
+root# apt install postgresql-13 postgresql-13-postgis-3 postgresql-13-pgrouting
 ```
 
 Then create a new database user and assign a password. It must be a super user:
@@ -60,7 +59,7 @@ postgres$ exit
 After that, change database access permissions in the file
 
 ```
-root# vim /etc/postgresql/11/main/pg_hba.conf
+root# vim /etc/postgresql/13/main/pg_hba.conf
 ```
 
 to the following ones:
@@ -92,7 +91,7 @@ conservative and often don't fit the needs for a large db. The settings hardly d
 hardware of your server. These are mine for a server with a Ryzen 3600 CPU, 64 GB Ram and 2 TB SSD:
 
 ```
-root# vim /etc/postgresql/11/main/postgresql.conf
+root# vim /etc/postgresql/13/main/postgresql.conf
 [...]
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
@@ -130,13 +129,13 @@ root# sysctl -p /etc/sysctl.conf
 ```
 
 The tuning tipps come from the [PostgreSQL
-wiki](https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server). Furthermore you can use the
-[postgresqltuner](https://github.com/jfcoz/postgresqltuner) to check your postgresql configuration.
+wiki](https://wiki.postgresql.org/wiki/Tuning_Your_PostgreSQL_Server). Additionally you may use the
+[postgresqltuner](https://github.com/jfcoz/postgresqltuner) to check and optimize your postgresql configuration.
 
 Lastly restart Postgresql:
 
 ```
-root# service postgresql restart
+root# systemctl restart postgresql.service
 ```
 
 
@@ -155,7 +154,7 @@ You can find a sample configuration for nginx at `config.example/nginx-walkersgu
 First install Osmosis, OSMFilter, OSMConvert and Osmium:
 
 ```
-root# apt-get install osmosis osmctools osmium-tool
+root# apt install osmosis osmctools osmium-tool
 ```
 
 Then download osm2po. The application creates a database table which represents the routing graph of
@@ -192,8 +191,8 @@ osm$ rm -R hh
 Install git, pip, parallel and screen
 
 ```
-root# apt-get install git python-pip moreutils screen
-root# pip install virtualenv
+root# apt install git python3-pip moreutils screen
+root# pip3 install virtualenv
 ```
 
 Create python virtual environment:
@@ -265,6 +264,12 @@ Test with:
 
 ```
 osm$ wget --header='Accept-Encoding: gzip' https://walkersguide.example.com/get_status -O - | gunzip
+```
+
+Since version 1.3.2 the WalkersGuide server provides some very basic map usage statistics:
+
+```
+osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py statistics
 ```
 
 Optional: Add an alias to your shell configuration:
