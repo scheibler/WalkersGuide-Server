@@ -92,6 +92,7 @@ class Translator:
             if tag == "address": return "Adresse"
             if tag == "hiking_trail": return "Wanderweg"
             if tag == "way_point": return "Wegpunkt"
+            if tag == "way_segment": return "Wegsegment"
 
         if category == "smoothness":
             if tag == "excellent": return "Sehr gut"
@@ -286,7 +287,9 @@ class Translator:
             if tag == "cycleway": return "Radweg"
             if tag == "distance_marker": return "Kilometerstein"
             if tag == "emergency_access_point": return "Notrufpunkt"
-            if tag == "footway": return "Fußweg"
+            if tag == "footway": return "Gehweg"
+            if tag == "footway_sidewalk": return "Bürgersteig"
+            if tag == "footway_crossing": return "Fußgängerüberweg"
             if tag == "ford": return "Furt"
             if tag == "gate": return "Tor"
             if tag == "living_street": return "Spielstraße"
@@ -700,7 +703,8 @@ class Translator:
         if category == "poi":
             if tag == "address": return "Address"
             if tag == "hiking_trail": return "Hiking trail"
-            if tag == "way_point": return "Waypoint"
+            if tag == "way_point": return "Way point"
+            if tag == "way_segment": return "Way segment"
 
         if category == "smoothness":
             if tag == "excellent": return "Excellent"
@@ -895,6 +899,8 @@ class Translator:
             if tag == "distance_marker": return "Distance Marker"
             if tag == "emergency_access_point": return "Emergency Access Point"
             if tag == "footway": return "Footpath"
+            if tag == "footway_sidewalk": return "Sidewalk"
+            if tag == "footway_crossing": return "Pedestrian crossing"
             if tag == "ford": return "Ford"
             if tag == "gate": return "Gate"
             if tag == "living_street": return "Living Street"

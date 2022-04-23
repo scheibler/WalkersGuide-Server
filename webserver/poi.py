@@ -139,7 +139,8 @@ class POI:
         # number of results
         try:
             if number_of_results > 0:
-                where_clause_param_dict['number_of_results'] = number_of_results
+                # increase number of results limit by 10% to counter unparsable poi
+                where_clause_param_dict['number_of_results'] = int(number_of_results * 1.1)
             else:
                 raise WebserverException(
                         ReturnCode.BAD_REQUEST, "number_of_results <= 0")
@@ -228,6 +229,8 @@ class POI:
         if [True for tag in tag_list if tag in station_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
+            # double number of results limit to counter redundant stations
+            where_clause_param_dict['number_of_results'] *= 2
 
             # tags
             tag_query_list = []
@@ -302,32 +305,33 @@ class POI:
                 if "name" not in station_tags:
                     # a station without a name is not very usefull
                     continue
-                if "public_transport" not in station_tags \
-                        or station_tags.get("public_transport") != "stop_position":
-                    # check if there is also a stop position for the station with
-                    # public_transport != stop_position or no public_transport entry at all
+
+                if station_tags.get("public_transport") != "stop_position":
+                    # if the station is not tagged as stop position, check if there is another one
+                    # with a stop position nearby
+                    station_boundary_box_query, station_boundary_box_query_params = \
+                            self.get_boundary_box_query_and_params(row['lat'], row['lon'], 50)
                     station_exists_result = self.selected_db.fetch_one(
                             sql.SQL(
                                 """
                                 SELECT exists(
                                     SELECT 1
                                     FROM {i_table_name}
-                                    WHERE {c_where_clause_query}
-                                        and tags->'name' = {p_station_name}
+                                    WHERE {c_station_boundary_box_query}
                                         and tags->'public_transport' = 'stop_position')
                                 as exists
                                 """
                                 ).format(
                                         i_table_name=sql.Identifier(table_name),
-                                        c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                        p_station_name=sql.Placeholder(name='station_name')),
-                            { **where_clause_param_dict, **{"station_name":station_tags.get("name")}})
+                                        c_station_boundary_box_query=station_boundary_box_query),
+                            station_boundary_box_query_params)
                     if station_exists_result.get("exists"):
-                        # the station already is represented by another one with the same name
-                        # and a stop_position tag, so skip this one
+                        # the station already is represented by another one with
+                        # a stop position, so skip this one
                         logging.debug("station with id {} ({}) already exists with a stop position, skip"
                                 .format(station_id, station_tags.get("name")))
                         continue
+
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
                         row['number_of_entrances'], row['number_of_lines'])
                 poi_list = self.insert_into_poi_list(poi_list, station, lat, lon)
@@ -357,11 +361,8 @@ class POI:
                     tag_query_list.append(
                             sql.SQL(
                                 """
-                                   tags->'aeroway' = 'aerodrome'
-                                OR tags->'aeroway' = 'terminal'
-                                or tags->'amenity' = ANY(
-                                    '{"bicycle_rental", "boat_rental", "boat_sharing",
-                                    "car_rental", "car_sharing"}')
+                                tags->'aeroway' = ANY(
+                                    '{"aerodrome", "gate", "helipad", "terminal"}')
                                 """))
                 if t == "transport_taxi":
                     tag_query_list.append(
@@ -423,8 +424,10 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"fuel", "marketplace", "shop", "shopping", "pharmacy",
-                                    "Supermarket", "post_office", "vending_machine", "veterinary"}')
+                                    '{"bicycle_rental", "boat_rental", "boat_sharing",
+                                    "car_rental", "car_sharing", "fuel", "marketplace",
+                                    "shop", "shopping", "pharmacy", "Supermarket",
+                                    "post_office", "vending_machine", "veterinary"}')
                                 OR tags ? 'craft'
                                 OR tags ? 'office'
                                 OR (tags ? 'shop' and tags->'shop' != 'vacant')
@@ -659,19 +662,19 @@ class POI:
         if not node_id:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "No node_id")
-        elif not isinstance(node_id, int):
+        elif not isinstance(node_id, int) or node_id < 0:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "Invalid node_id")
         if not way_id:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "No way_id")
-        elif not isinstance(way_id, int):
+        elif not isinstance(way_id, int) or way_id < 0:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "Invalid way_id")
         if not next_node_id:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "No next_node_id")
-        elif not isinstance(next_node_id, int):
+        elif not isinstance(next_node_id, int) or next_node_id < 0:
             raise WebserverException(
                     ReturnCode.BAD_REQUEST, "Invalid next_node_id")
 
@@ -838,11 +841,11 @@ class POI:
                 or type(tags) is not dict:
             return point
         point['type'] = "point"
-        point['sub_type'] = self.translator.translate("poi", "way_point")
+        point['sub_type'] = ""
         if "name" in tags:
             point['name'] = tags['name']
         else:
-            point['name'] = point['sub_type']
+            point['name'] = self.translator.translate("poi", "way_point")
         point['lat'] = lat
         point['lon'] = lon
         # optional attributes
@@ -861,7 +864,9 @@ class POI:
                 point['wheelchair'] = 1
             elif tags['wheelchair'] == "yes":
                 point['wheelchair'] = 2
-        # alternative names and note
+        # description, alternative names and note
+        if "description" in tags:
+            point['description'] = tags['description']
         if "alt_name" in tags:
             point['alt_name'] = tags['alt_name']
         if "old_name" in tags:
@@ -895,27 +900,42 @@ class POI:
             return segment
         # type and subtype
         segment['type'] = "footway"
+        segment['sub_type'] = ""
         if "highway" in tags:
             segment['sub_type'] = self.translator.translate("highway", tags['highway'])
+            # special subtype for sidewalks and pedestrian crossings
+            if tags['highway'] in ["footway", "path"]:
+                if tags.get("footway") == "sidewalk":
+                    segment['sub_type'] = self.translator.translate("highway", "footway_sidewalk")
+                elif tags.get("footway") == "crossing":
+                    segment['sub_type'] = self.translator.translate("highway", "footway_crossing")
+                # beware bicyclists
+                if tags['highway'] == "footway" \
+                        or "footway" in tags:
+                    if tags.get("bicycle") in ["yes", "designated", "permissive"]:
+                        segment['beware_bicyclists'] = 1
+                    else:
+                        segment['beware_bicyclists'] = 0
+            # additional information
+            if tags['highway'] in ["footway", "path", "track"]:
+                if "surface" in tags:
+                    segment['sub_type'] += ", %s" % self.translator.translate("surface", tags['surface'])
+                elif "tracktype" in tags:
+                    segment['sub_type'] += ", %s" % tags['tracktype']
             if "railway" in tags and tags['railway'] == "tram":
                 segment['tram'] = 1
             else:
                 segment['tram'] = 0
         elif "railway" in tags:
             segment['sub_type'] = self.translator.translate("railway", tags['railway'])
-        else:
-            segment['sub_type'] = "unknown"
+
         # name
         if "name" in tags:
             segment['name'] = tags['name']
-        elif "footway" in tags:
-            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['footway'])
-        elif "surface" in tags:
-            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['surface'])
-        elif "tracktype" in tags:
-            segment['name'] = "%s (%s)" % (segment['sub_type'], tags['tracktype'])
-        else:
+        elif segment['sub_type'] != "":
             segment['name'] = segment['sub_type']
+        else:
+            segment['name'] = self.translator.translate("poi", "way_segment")
         # optional attributes
         if "description" in tags:
             segment['description'] = tags['description']
@@ -1021,14 +1041,13 @@ class POI:
 
         # type and subtype
         intersection['type'] = "intersection"
+        intersection['sub_type'] = ""
         if "highway" in tags and tags['highway'] == "mini_roundabout":
             intersection['sub_type'] = self.translator.translate("highway", "roundabout")
         elif "highway" in tags and tags['highway'] == "traffic_signals":
             intersection['sub_type'] = self.translator.translate("highway", "traffic_signals")
         elif "railway" in tags and tags['railway'] == "crossing":
             intersection['sub_type'] = self.translator.translate("railway", "crossing")
-        else:
-            intersection['sub_type'] = self.translator.translate("highway", "crossing")
 
         # translate name
         translated_street_name_list = []
@@ -1099,22 +1118,22 @@ class POI:
         entrance = self.create_way_point(osm_id, lat, lon, tags)
         if entrance == {}:
             return entrance
+        # type and subtype
+        entrance['type'] = "entrance"
+        entrance['sub_type'] = self.translator.translate("entrance", entrance_label)
         # parse address
         address_data = self.extract_address(tags)
         if address_data:
             entrance.update(address_data)
         # name
-        if entrance.get("name") == entrance.get("sub_type"):
-            if entrance.get("display_name"):
-                entrance['name'] = entrance['display_name']
-            else:
-                entrance['name'] = self.translator.translate("entrance", entrance_label)
+        if "name" in tags:
+            entrance['name'] = tags['name']
+        elif entrance.get("display_name"):
+            entrance['name'] = entrance['display_name']
         else:
-            # add label separately
-            entrance['label'] = entrance_label
-        # type and subtype
-        entrance['type'] = "entrance"
-        entrance['sub_type'] = self.translator.translate("entrance", entrance_label)
+            entrance['name'] = entrance['sub_type']
+        # add label separately
+        entrance['label'] = entrance_label
         return entrance
 
 
@@ -1208,6 +1227,14 @@ class POI:
             poi['sub_type'] = self.translator.translate("man_made", tags['man_made'])
         elif "natural" in tags:
             poi['sub_type'] = self.translator.translate("natural", tags['natural'])
+        elif "healthcare" in tags:
+            if "healthcare:speciality" in tags \
+                    and tags['healthcare:speciality'].lower() != "general":
+                poi['sub_type'] = "{} ({})".format(
+                        self.translator.translate("healthcare", tags['healthcare']),
+                        self.translator.translate("healthcare", tags['healthcare:speciality']))
+            else:
+                poi['sub_type'] = self.translator.translate("healthcare", tags['healthcare'])
         elif "craft" in tags:
             poi['sub_type'] = self.translator.translate("craft", tags['craft'])
         elif "office" in tags:
@@ -1317,7 +1344,7 @@ class POI:
 
         # parse tags
         station['type'] = "station"
-        station['sub_type'] = self.translator.translate("public_transport", "unknown")
+        station['sub_type'] = ""
         station['vehicles'] = []
         if "highway" in tags and tags['highway'] == "bus_stop":
             if "bus" not in station['vehicles']:
@@ -1360,11 +1387,9 @@ class POI:
                 if len(station['vehicles']) == 0:
                     station['vehicles'].append("train")
         if len(station['vehicles']) > 0:
-            station['sub_type'] = ""
-            for vehicle in station['vehicles']:
-                station['sub_type'] += "%s, " % self.translator.translate("public_transport", vehicle)
-            if station['sub_type'].endswith(", "):
-                station['sub_type'] = station['sub_type'][0:station['sub_type'].__len__()-2]
+            station['sub_type'] = ", ".join(
+                    [ self.translator.translate("public_transport", vehicle) \
+                            for vehicle in station['vehicles'] ])
 
         # transport lines
         station['lines'] = []
@@ -1519,8 +1544,6 @@ class POI:
                     addr_list.append(road)
             else:
                 addr_list.append(road)
-            if postcode:
-                addr_list.append(postcode)
             if city:
                 addr_list.append(city)
             addr_dict['display_name'] = ', '.join(addr_list)

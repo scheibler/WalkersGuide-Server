@@ -3,17 +3,38 @@ API
 
 
 
+Change Log
+----------
+
+### API ###
+
+Version 4:
+- Added: webserver function get_hiking_trails()
+
+Version 3:
+- Added: webserver function send_feedback()
+- Removed:
+    * webserver function get_departures()
+    * param "supported_public_transport_provider_list" in webserver function get_status()
+
+Version 2:
+- Changed: get_route param "allowed_way_classes" (Key-Value-Dict way_class_name:weight)
+- Removed: get_route param "indirection_factor"
+- Removed: get_status params supported_indirection_factor_list, supported_way_class_list, maps[map_id]['development']
+
+
+### Map ###
+
+Version 3:
+- New table: hiking_trails
+
+Version 2:
+- Removed: Table "way_class_weights"
+
+
+
 WalkersGuide-MapServer
 ----------------------
-
-
-Serverversion: 1.3.2
-
-intersection_segment: New mandatory parameter "intersection_node_id"
-
-
-
-Serverversion: 1.3.1
 
 get_route():
 * input: json via post
@@ -85,34 +106,4 @@ get_status():
     * supported_language_list: List<String>             ["de", "en"]
     * supported_poi_category_list: List<String>
     * maps: Dict<map_id:String,map_data:Dict>
-
-
-
-Change Log
-----------
-
-### API ###
-
-Version 4:
-- Added: webserver function get_hiking_trails()
-
-Version 3:
-- Added: webserver function send_feedback()
-- Removed:
-    * webserver function get_departures()
-    * param "supported_public_transport_provider_list" in webserver function get_status()
-
-Version 2:
-- Changed: get_route param "allowed_way_classes" (Key-Value-Dict way_class_name:weight)
-- Removed: get_route param "indirection_factor"
-- Removed: get_status params supported_indirection_factor_list, supported_way_class_list, maps[map_id]['development']
-
-
-### Map ###
-
-Version 3:
-- New table: hiking_trails
-
-Version 2:
-- Removed: Table "way_class_weights"
 

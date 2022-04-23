@@ -9,7 +9,21 @@ General
 *: attribute is mandatory
 +: attribute is optional
 
-WalkersGuide-Server version 1.3.2
+
+
+Change Log
+----------
+
+### WalkersGuide-Server 1.4.0
+
+- Point: New optional parameter "description"
+- segment: New optional parameter "beware_bicyclists"
+- intersection_segment: New mandatory parameter "intersection_node_id"
+
+
+### WalkersGuide-Server 1.3.1
+
+- New optional point attributes: alt_name, old_name and note
 
 
 
@@ -28,6 +42,7 @@ Point:
                     [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
 + wheelchair:       Integer         wheelchair accessibility
                     [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
++ description:      String          Additional description
 + alt_name          String
 + old_name          String
 + note              String
@@ -118,6 +133,8 @@ segment:
 + maxspeed:                 Integer         Maximal speed in km/h
                                 [maxspeed >= 0, default: unknown = -1]
 + pois:                     List<Point>     List of points (e. x. intersections along the way)
++ beware_bicyclists:        Integer         bicyclists on footways
+                                [0 = no, 1 = yes, default: -1 = unknown]
 + segregated:               Integer         shared ways like footway/cycleway use different lanes
                                 [0 = no, 1 = yes, default: -1 = unknown]
 + sidewalk:                 Integer         street contains sidewalk
