@@ -7,7 +7,7 @@ import logging
 
 import psycopg2
 import psycopg2.extras
-from psycopg2 import sql
+from psycopg2 import pool, sql
 
 from . import constants
 from .constants import ReturnCode
@@ -18,18 +18,21 @@ from .helper import WebserverException
 class DBControl():
 
     def __init__(self, map_id):
-        # host and port
-        self.host_name = Config().database.get("host_name")
-        self.port = Config().database.get("port")
-        # user and password
-        self.user_name = Config().database.get("user")
-        self.password = Config().database.get("password")
-        # database name
         if not map_id:
             raise WebserverException(
                     ReturnCode.MAP_LOADING_FAILED,
                     'No map id')
-        self.db_name = map_id
+
+        try:
+            self.connection_pool = psycopg2.pool.SimpleConnectionPool(
+                    1, 20,
+                    host = Config().database.get("host_name"),
+                    port = Config().database.get("port"),
+                    user = Config().database.get("user"),
+                    password = Config().database.get("password"),
+                    database=map_id)
+        except (Exception, psycopg2.DatabaseError) as error:
+            logging.fatal("Could not create database connection pool")
 
         # create access statistics table, if it doesn't exist yet
         self.edit_database(
@@ -92,7 +95,7 @@ class DBControl():
         row = None
         error = None
         try:
-            con = self.connect()
+            con = self.connection_pool.getconn()
             cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
             cursor.execute(query, params)
             row = cursor.fetchone()
@@ -107,7 +110,7 @@ class DBControl():
                 error = DBControl.DatabaseResultEmptyError("No result for query")
         finally:
             if con:
-                con.close()
+                self.connection_pool.putconn(con)
             if error:
                 raise error
         return row
@@ -118,7 +121,7 @@ class DBControl():
         row_list = None
         error = None
         try:
-            con = self.connect()
+            con = self.connection_pool.getconn()
             cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
             cursor.execute(query, params)
             row_list = cursor.fetchall()
@@ -131,7 +134,7 @@ class DBControl():
                     'SQL multi-row query: {}'.format(cursor.query.decode("utf-8").strip()))
         finally:
             if con:
-                con.close()
+                self.connection_pool.putconn(con)
             if error:
                 raise error
         return row_list
@@ -141,7 +144,7 @@ class DBControl():
         con = None
         error = None
         try:
-            con = self.connect()
+            con = self.connection_pool.getconn()
             cursor = con.cursor()
             cursor.execute(query, params)
             con.commit()
@@ -157,9 +160,39 @@ class DBControl():
                     'edit_database: {}'.format(cursor.query.decode("utf-8").strip()))
         finally:
             if con:
-                con.close()
+                self.connection_pool.putconn(con)
             if error:
                 raise error
+
+
+    def table_exists(self, table_name):
+        con = None
+        table_exists = False
+        error = None
+        try:
+            con = self.connection_pool.getconn()
+            cursor = con.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cursor.execute(
+                    sql.SQL(
+                        """
+                            SELECT EXISTS(
+                                SELECT * FROM information_schema.tables
+                                WHERE table_name = {p_table_name})
+                        """
+                        ).format(
+                            p_table_name=sql.Placeholder(name='table_name')),
+                        { "table_name" : table_name })
+            table_exists = cursor.fetchone()[0]
+        except psycopg2.Error as e:
+            logging.error(
+                    'SQL single-row query: {} -- {}'.format(query, params))
+            error = DBControl.DatabaseError(e)
+        finally:
+            if con:
+                self.connection_pool.putconn(con)
+            if error:
+                raise error
+        return table_exists
 
 
     class DatabaseError(Exception):
@@ -167,9 +200,4 @@ class DBControl():
 
     class DatabaseResultEmptyError(DatabaseError):
         """ no query result """
-
-    def connect(self):
-        return psycopg2.connect(
-                database=self.db_name, host=self.host_name, port=self.port,
-                user=self.user_name, password=self.password)
 
