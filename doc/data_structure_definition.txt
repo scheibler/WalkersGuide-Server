@@ -46,6 +46,7 @@ Point:
 + alt_name          String
 + old_name          String
 + note              String
++ wikidata:         String
 + turn:             Integer         turn in degree (only for routes)
                     [0 <= turn <= 359, default: unknown = -1]
 
@@ -109,8 +110,8 @@ station:                        extends from poi
 * type:                         "station"
 + lines:                        list<line>      list of lines for this station
 + vehicles:                     list<string>    list of vehicles for this station
-+ station_id                    Long            station id from deutsche bahn api
-                                [station_id >= 0, default: unknown = -1]
++ network:                      String
++ operator:                     String
 
 line:
 * nr:       String      line number
@@ -151,6 +152,7 @@ segment:
                                 [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
 + width:                    Double          way width of way
                                 [width >= 0.0, default: unknown = -1.0]
++ wikidata:                 String
 
 intersection_segment:           extends from segment
 * type:                         "footway_intersection"

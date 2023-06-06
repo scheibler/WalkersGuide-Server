@@ -258,10 +258,10 @@ class POI:
                     tag_query_list.append(
                             sql.SQL(
                                 """
-                                   (tags->'public_transport' = 'stop_position'
+                                   (tags->'public_transport' = ANY('{"stop_position", "station"}')
                                     AND (tags->'ferry' = 'yes' OR tags->'amenity' = 'ferry_terminal'))
                                 OR (tags->'amenity' = 'ferry_terminal' AND NOT tags ? 'public_transport')
-                                OR (tags->'public_transport' = 'stop_position'
+                                or (tags->'public_transport' = ANY('{"stop_position", "station"}')
                                     AND (tags->'aerialway' = 'yes' AND tags->'aerialway' = 'station'))
                                 OR (tags->'aerialway' = 'station' AND NOT tags ? 'public_transport')
                                 """))
@@ -306,7 +306,11 @@ class POI:
                     # a station without a name is not very usefull
                     continue
 
-                if station_tags.get("public_transport") != "stop_position":
+                # filter possible duplicates of bus and tram stops
+                if station_tags.get("public_transport") != "stop_position" \
+                        and (
+                               station_tags.get("highway") == "bus_stop"
+                            or station_tags.get("railway") == "tram_stop"):
                     # if the station is not tagged as stop position, check if there is another one
                     # with a stop position nearby
                     station_boundary_box_query, station_boundary_box_query_params = \
@@ -362,7 +366,7 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'aeroway' = ANY(
-                                    '{"aerodrome", "gate", "helipad", "terminal"}')
+                                    '{"aerodrome", "gate", "terminal"}')
                                 """))
                 if t == "transport_taxi":
                     tag_query_list.append(
@@ -873,6 +877,9 @@ class POI:
             point['old_name'] = tags['old_name']
         if "note" in tags:
             point['note'] = tags['note']
+        # wikidata
+        if "wikidata" in tags:
+            point['wikidata'] = tags['wikidata']
         return point
 
     def create_way_segment_by_id(self, osm_way_id, walking_reverse=False):
@@ -936,6 +943,7 @@ class POI:
             segment['name'] = segment['sub_type']
         else:
             segment['name'] = self.translator.translate("poi", "way_segment")
+
         # optional attributes
         if "description" in tags:
             segment['description'] = tags['description']
@@ -994,6 +1002,9 @@ class POI:
                 segment['width'] = float(tags['width'])
             except ValueError as e:
                 pass
+        # wikidata
+        if "wikidata" in tags:
+            segment['wikidata'] = tags['wikidata']
         segment['bearing'] = -1
         return segment
 
@@ -1411,6 +1422,12 @@ class POI:
                 if "direction" in row and row['direction'] != None:
                     line['to'] = row['direction']
                 station['lines'].append(line)
+
+        # additional optional attributes
+        if "network" in tags:
+            station['network'] = tags['network']
+        if "operator" in tags:
+            station['operator'] = tags['operator']
         return station
 
 
