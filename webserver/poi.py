@@ -1424,6 +1424,8 @@ class POI:
                 station['lines'].append(line)
 
         # additional optional attributes
+        if "local_ref" in tags:
+            station['local_ref'] = tags['local_ref']
         if "network" in tags:
             station['network'] = tags['network']
         if "operator" in tags:

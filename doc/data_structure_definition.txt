@@ -110,6 +110,7 @@ station:                        extends from poi
 * type:                         "station"
 + lines:                        list<line>      list of lines for this station
 + vehicles:                     list<string>    list of vehicles for this station
++ local_ref:                    String          Platform number
 + network:                      String
 + operator:                     String
 
