@@ -127,8 +127,12 @@ segment:
 * type:                     "segment"
 * sub_type:                 String
 * name:                     String
-* bearing:          Integer         Bearing of the way segment
+* start:                    Coordinates
+* end:                      Coordinates
+* bearing:          Integer         Bearing between start and end coordinates
                     [0 <= bearing <= 359, default: unknown = -1]
+* distance:         Integer         Distance of the segment between start and end coordinates
+                    [distance >= 0, default: unknown = -1]
 + description:              String          Additional description
 + lanes:                    Integer         number of street lanes
                                 [lanes >= 0, default: unknown = -1]
@@ -165,13 +169,15 @@ intersection_segment:           extends from segment
 
 route_segment:                  extends from segment
 * type:                     "footway_route"
-* distance:         Integer         Distance of the segment between two route points
-                    [distance >= 0, default: unknown = -1]
 
 
 
 Other
 -----
+
+Coordinates:
+* lat:              Double
+* lon:              Double
 
 Map:
 * name: String

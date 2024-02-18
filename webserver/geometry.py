@@ -4,6 +4,14 @@
 import math
 
 
+def add_bearing_and_distance_to_segment(segment, lat1, lon1, lat2, lon2):
+    segment['start']    = { "lat": lat1, "lon": lon1 }
+    segment['end']     = { "lat": lat2, "lon": lon2 }
+    segment['bearing']  = bearing_between_two_points(lat1, lon1, lat2, lon2)
+    segment['distance'] = distance_between_two_points(lat1, lon1, lat2, lon2)
+    return segment
+
+
 def bearing_difference_between_two_segments(bearing1, bearing2):
     """
     bearing difference between 0 and 180

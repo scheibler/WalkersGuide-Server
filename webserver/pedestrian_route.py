@@ -357,6 +357,10 @@ class PedestrianRoute:
                 reverse = True
                 last_target_id = part['source']
 
+            # create next segment
+            next_segment = self.poi.create_way_segment_by_id(part['osm_id'], reverse )
+            next_segment['way_class'] = part['kmh']
+
             # extract points of a curved graph edge
             coordinates_list = self.selected_db.fetch_all(
                     sql.SQL(
@@ -373,6 +377,8 @@ class PedestrianRoute:
                         {"routing_table_id":part['id']})
             if reverse:
                 coordinates_list = coordinates_list[::-1]
+
+            # get relevant points
             next_point_list = []
             last_accepted_bearing = geometry.bearing_between_two_points(
                         coordinates_list[0]['lat'], coordinates_list[0]['lon'],
@@ -390,9 +396,6 @@ class PedestrianRoute:
                                 -1, coordinates_list[i]['lat'], coordinates_list[i]['lon'], {}))
             next_point_list.append(next_point)
 
-            # create next segment
-            next_segment = self.poi.create_way_segment_by_id(part['osm_id'], reverse )
-            next_segment['way_class'] = part['kmh']
             # add next points to route
             for point in next_point_list:
                 route = self.add_point_to_route(route, point, next_segment.copy())
@@ -428,9 +431,11 @@ class PedestrianRoute:
         # add first way segment
         if first_segment:
             route[0]['turn'] = turn
+            first_segment = geometry.add_bearing_and_distance_to_segment(
+                    first_segment,
+                    start_point['lat'], start_point['lon'],
+                    route[0]['lat'], route[0]['lon'])
             first_segment['type'] = "footway_route"
-            first_segment['bearing'] = bearing_start_p0
-            first_segment['distance'] = distance_start_p0
             route.insert(0, first_segment)
             route.insert(0, start_point)
 
@@ -636,10 +641,8 @@ class PedestrianRoute:
     def add_point_to_route(self, route, next_point, next_segment, add_all_intersections=False):
         # calculate distance and bearing of new segment
         try:
-            next_segment['bearing'] = geometry.bearing_between_two_points(
-                    route[-1]['lat'], route[-1]['lon'],
-                    next_point['lat'], next_point['lon'])
-            next_segment['distance'] = geometry.distance_between_two_points(
+            next_segment = geometry.add_bearing_and_distance_to_segment(
+                    next_segment,
                     route[-1]['lat'], route[-1]['lon'],
                     next_point['lat'], next_point['lon'])
             if next_segment['distance'] == 0 and next_point['type'] == "intersection":
@@ -695,13 +698,11 @@ class PedestrianRoute:
         except IndexError as e:
             pass
         # calculate the updated distance and bearing to the potentially new prev point
+        next_segment = geometry.add_bearing_and_distance_to_segment(
+                next_segment,
+                route[-1]['lat'], route[-1]['lon'],
+                next_point['lat'], next_point['lon'])
         next_segment['type'] = "footway_route"
-        next_segment['bearing'] = geometry.bearing_between_two_points(
-                route[-1]['lat'], route[-1]['lon'],
-                next_point['lat'], next_point['lon'])
-        next_segment['distance'] = geometry.distance_between_two_points(
-                route[-1]['lat'], route[-1]['lon'],
-                next_point['lat'], next_point['lon'])
         # update turn value
         try:
             if "turn" not in route[-1]:

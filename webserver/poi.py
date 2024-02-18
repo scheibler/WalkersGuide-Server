@@ -776,19 +776,22 @@ class POI:
                                 p_way_id=sql.Placeholder(name='way_id')),
                     {"node_id":node_id, "way_id":way_id}):
                 potential_next_way_tags = self.parse_hstore_column(potential_next_way['way_tags'])
-                if potential_next_way_tags.get("name") \
-                        and potential_next_way_tags.get("name") == way_tags.get("name"):
-                    potential_next_way_list.append(potential_next_way)
+                if potential_next_way_tags.get("name"):
+                    # potential next way contains name
+                    if potential_next_way_tags.get("name") == way_tags.get("name"):
+                        potential_next_way_list.append(potential_next_way)
                 elif potential_next_way_tags.get("surface") \
-                        and potential_next_way_tags.get("surface") == way_tags.get("surface") \
-                        and potential_next_way_tags.get("tracktype") \
-                        and potential_next_way_tags.get("tracktype") == way_tags.get("tracktype"):
-                    potential_next_way_list.append(potential_next_way)
-                elif potential_next_way_tags.get("surface") \
-                        and potential_next_way_tags.get("surface") == way_tags.get("surface") \
-                        and potential_next_way_tags.get("smoothness") \
-                        and potential_next_way_tags.get("smoothness") == way_tags.get("smoothness"):
-                    potential_next_way_list.append(potential_next_way)
+                        and potential_next_way_tags.get("surface") == way_tags.get("surface"):
+                    # no name but same surface
+                    if   potential_next_way_tags.get("tracktype") \
+                            and potential_next_way_tags.get("tracktype") == way_tags.get("tracktype"):
+                        # same track type
+                        potential_next_way_list.append(potential_next_way)
+                    elif potential_next_way_tags.get("smoothness") \
+                            and potential_next_way_tags.get("smoothness") == way_tags.get("smoothness"):
+                        # same smoothness
+                        potential_next_way_list.append(potential_next_way)
+
             if len(potential_next_way_list) == 1:
                 way_id = potential_next_way_list[0]['way_id']
                 way_tags = self.parse_hstore_column(
@@ -887,7 +890,11 @@ class POI:
             result = self.selected_db.fetch_one(
                     sql.SQL(
                         """
-                        SELECT tags
+                        SELECT tags,
+                               ST_Y(ST_PointN(linestring, 1)) AS start_lat,
+                               ST_X(ST_PointN(linestring, 1)) AS start_lon,
+                               ST_Y(ST_PointN(linestring, -1)) AS dest_lat,
+                               ST_X(ST_PointN(linestring, -1)) AS dest_lon
                             FROM ways
                             WHERE id = {p_osm_way_id}
                         """
@@ -902,9 +909,11 @@ class POI:
 
     def create_way_segment(self, osm_way_id, tags, walking_reverse=False):
         segment = {}
-        if type(tags) is not dict \
-                or type(walking_reverse) is not bool:
+        if         not isinstance(osm_way_id, int) \
+                or not isinstance(tags, dict) \
+                or not isinstance(walking_reverse, bool):
             return segment
+
         # type and subtype
         segment['type'] = "footway"
         segment['sub_type'] = ""
@@ -1005,7 +1014,6 @@ class POI:
         # wikidata
         if "wikidata" in tags:
             segment['wikidata'] = tags['wikidata']
-        segment['bearing'] = -1
         return segment
 
     def create_intersection_by_id(self, osm_id):
@@ -1093,12 +1101,14 @@ class POI:
                     street['way_id'],
                     self.parse_hstore_column(street['way_tags']),
                     street['direction'] == "B")
+            sub_segment = geometry.add_bearing_and_distance_to_segment(
+                    sub_segment,
+                    intersection['lat'], intersection['lon'],
+                    street['lat'], street['lon'])
             sub_segment['intersection_node_id'] = osm_id
             sub_segment['next_node_id'] = street['node_id']
             sub_segment['type'] = "footway_intersection"
             sub_segment['intersection_name'] = intersection['name']
-            sub_segment['bearing'] = geometry.bearing_between_two_points(
-                    intersection['lat'], intersection['lon'], street['lat'], street['lon'])
             intersection['way_list'].append(sub_segment)
 
         # crossings
