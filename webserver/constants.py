@@ -1,4 +1,4 @@
-server_version = '1.4.4'
+server_version = '1.4.5'
 supported_api_version_list = [ 3, 4 ]
 supported_map_version_list = [ 2, 3 ]
 supported_language_list = ["en", "de"]
@@ -11,7 +11,7 @@ supported_way_class_list = ["big_streets", "small_streets", "paved_ways", "unpav
 supported_poi_category_listp = ["transport_bus_tram", "transport_train_lightrail_subway",
         "transport_airport_ferry_aerialway", "transport_taxi",
         "food", "entertainment", "finance", "shop", "health", "education", "public_service",
-        "tourism", "all_buildings_with_name", "entrance", "surveillance", "bench", "trash",
+        "tourism", "all_buildings_with_name", "entrance", "entrance_without_name", "surveillance", "bench", "trash",
         "named_intersection", "other_intersection", "pedestrian_crossings", "bridge"]
 
 # webserver return codes

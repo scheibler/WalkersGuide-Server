@@ -229,8 +229,6 @@ class POI:
         if [True for tag in tag_list if tag in station_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
-            # double number of results limit to counter redundant stations
-            where_clause_param_dict['number_of_results'] *= 2
 
             # tags
             tag_query_list = []
@@ -294,7 +292,8 @@ class POI:
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
                                 c_order_by_and_limit_query=order_by_and_limit_query),
-                    where_clause_param_dict)
+                    # double number of results limit to counter redundant stations
+                    { **where_clause_param_dict, "number_of_results" : number_of_results*2 })
             t2 = time.time()
 
             for row in result:
@@ -554,7 +553,8 @@ class POI:
         ###########
         # entrances
         ###########
-        if "entrance" in tag_list:
+        entrance_tag_list = [ "entrance", "entrance_without_name" ]
+        if [True for tag in tag_list if tag in entrance_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
 
@@ -582,13 +582,21 @@ class POI:
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
                                 c_order_by_and_limit_query=order_by_and_limit_query),
-                    where_clause_param_dict)
+                    # multiply number of results limit to counter many entrances without name
+                    { **where_clause_param_dict, "number_of_results" : number_of_results*4 })
             t2 = time.time()
 
             for row in result:
                 entrance = self.create_entrance(int(row['entrance_id']), row['lat'], row['lon'],
                         self.parse_hstore_column(row['tags']), row['label'])
-                poi_list = self.insert_into_poi_list(poi_list, entrance, lat, lon)
+                add_entrance = False
+                if entrance['name'] != entrance['sub_type']:
+                    # entrance has a different name
+                    add_entrance = "entrance" in tag_list
+                else:
+                    add_entrance = "entrance_without_name" in tag_list
+                if add_entrance:
+                    poi_list = self.insert_into_poi_list(poi_list, entrance, lat, lon)
                 # check for cancel command
                 if Config().has_session_id_to_remove(self.session_id):
                     raise WebserverException(

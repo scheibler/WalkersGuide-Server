@@ -3,6 +3,16 @@ Change Log
 
 
 
+v1.4.5: 2024-03-13
+------------------
+
+POI:
+- New behaviour for poi category "entrance":
+    * Now "entrance" only returns entrances with a name
+    * The new poi category "entrance_without_name" returns all other, less important entrances
+
+
+
 v1.4.4: 2024-02-18
 ------------------
 
