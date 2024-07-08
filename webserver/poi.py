@@ -14,10 +14,11 @@ from .translator import Translator
 
 class POI:
 
-    def __init__(self, map_id, session_id, user_language):
+    def __init__(self, map_id, session_id, user_language, prefer_translated_strings_in_osm_tags):
         self.selected_db = DBControl(map_id)
         self.session_id = session_id
         self.translator = Translator(user_language)
+        self.prefer_translated_strings_in_osm_tags = prefer_translated_strings_in_osm_tags
 
 
     def get_hiking_trails(self, lat, lon, radius, order_by="closest"):
@@ -164,20 +165,11 @@ class POI:
         ###############
         # intersections
         ###############
-        intersection_tag_list = ["named_intersection", "other_intersection"]
+        intersection_tag_list = ["named_intersection", "partially_named_intersection", "other_intersection",
+                "named_railway_intersection", "other_railway_intersection"]
         if [True for tag in tag_list if tag in intersection_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
-
-            # tags
-            if "named_intersection" in tag_list and "other_intersection" not in tag_list:
-                # only bigger intersections
-                where_clause_query_list.append(
-                        sql.SQL("number_of_streets_with_name > 1"))
-            elif "named_intersection" not in tag_list and "other_intersection" in tag_list:
-                # only smaller intersections
-                where_clause_query_list.append(
-                        sql.SQL("number_of_streets_with_name <= 1"))
 
             # search
             if search:
@@ -189,6 +181,70 @@ class POI:
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
                         )
+
+            # tags (extra sublist cause it must be "or" concatenated)
+            tags_where_clause_query_list = list()
+
+            # number of named streets
+            if          "named_intersection" in tag_list \
+                    and "partially_named_intersection" in tag_list \
+                    and "other_intersection" in tag_list:
+                tags_where_clause_query_list.append(sql.SQL("true"))
+            elif        "named_intersection" not in tag_list \
+                    and "partially_named_intersection" in tag_list \
+                    and "other_intersection" in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name <= 1"))
+            elif        "named_intersection" in tag_list \
+                    and "partially_named_intersection" not in tag_list \
+                    and "other_intersection" in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("(number_of_streets_with_name < 1 OR number_of_streets_with_name > 1)"))
+            elif        "named_intersection" in tag_list \
+                    and "partially_named_intersection" in tag_list \
+                    and "other_intersection" not in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name >= 1"))
+            elif        "named_intersection" not in tag_list \
+                    and "partially_named_intersection" not in tag_list \
+                    and "other_intersection" in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name < 1"))
+            elif        "named_intersection" not in tag_list \
+                    and "partially_named_intersection" in tag_list \
+                    and "other_intersection" not in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name = 1"))
+            elif        "named_intersection" in tag_list \
+                    and "partially_named_intersection" not in tag_list \
+                    and "other_intersection" not in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL("number_of_streets_with_name > 1"))
+            else:
+                tags_where_clause_query_list.append(sql.SQL("false"))
+
+            # railway intersections
+            if          "railway_intersection" in tag_list:
+                tags_where_clause_query_list.append(
+                        sql.SQL(
+                            """
+                            id IN (
+                                SELECT DISTINCT(i.id)
+                                FROM {i_intersections} i JOIN {i_intersection_data} id
+                                ON i.id = id.id
+                                WHERE id.way_tags->'railway' = ANY(
+                                    '{{"light_rail", "miniature", "monorail",
+                                    "narrow_gauge", "rail", "subway", "tram"}}'))
+                            """).format(
+                                i_intersections=sql.Identifier(
+                                    Config().database.get("intersection_table")),
+                                i_intersection_data=sql.Identifier(
+                                    Config().database.get("intersection_data_table")))
+                            )
+
+            # and append
+            where_clause_query_list.append(
+                    sql.SQL(" OR ").join(tags_where_clause_query_list))
 
             table_name = Config().database.get("intersection_table")
             result = self.selected_db.fetch_all(
@@ -351,8 +407,8 @@ class POI:
         #####
         poi_tag_list = ["transport_airport_ferry_aerialway", "transport_taxi",
                 "food", "entertainment", "tourism", "finance", "shop",
-                "health", "education", "public_service", "all_buildings_with_name",
-                "surveillance", "bench", "trash", "bridge"]
+                "health", "education", "public_service", "other_service", "all_buildings_with_name",
+                "post_box", "surveillance", "bench", "trash", "bridge"]
         if [True for tag in tag_list if tag in poi_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
@@ -393,6 +449,7 @@ class POI:
                                     "stripclub", "studio", "swingerclub", "theatre",
                                     "youth_centre", "events_venue", "conference_centre",
                                     "love_hotel", "public_bookcase"}')
+                                OR tags ? 'club'
                                 OR tags ? 'leisure'
                                 OR tags->'tourism' = 'museum'
                                 """))
@@ -401,7 +458,8 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"crypt", "place_of_worship", "shelter", "hunting_stand"}')
+                                    '{"bbq", "crypt", "place_of_worship", "shelter",
+                                    "hunting_stand", "kitchen", "toilets"}')
                                 OR tags->'natural' = ANY(
                                     '{"glacier", "hot_spring", "spring", "volcano",
                                     "peak", "cave_entrance", "rock", "stone"}')
@@ -420,7 +478,8 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"atm", "bank", "bureau_de_change"}')
+                                    '{"atm", "bank", "bureau_de_change", "payment_center",
+                                    "payment_terminal", "money_transfer"}')
                                 """))
                 if t == "shop":
                     tag_query_list.append(
@@ -431,8 +490,6 @@ class POI:
                                     "car_rental", "car_sharing", "fuel", "marketplace",
                                     "shop", "shopping", "pharmacy", "Supermarket",
                                     "post_office", "vending_machine", "veterinary"}')
-                                OR tags ? 'craft'
-                                OR tags ? 'office'
                                 OR (tags ? 'shop' and tags->'shop' != 'vacant')
                                 """))
                 if t == "health":
@@ -441,16 +498,17 @@ class POI:
                                 """
                                 tags->'amenity' = ANY(
                                     '{"pharmacy", "doctors", "dentist", "hospital", "health_centre",
-                                    "baby_hatch", "clinic", "nursing_home", "social_facility",
+                                    "baby_hatch", "clinic", "nursing_home", "social_facility", "public_bath",
                                     "retirement_home", "sauna", "shower", "toilets", "veterinary"}')
                                 OR tags ? 'healthcare'
+                                or tags->'office' = 'therapist'
                                 """))
                 if t == "education":
                     tag_query_list.append(
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"school", "college", "university", "library",
+                                    '{"school", "college", "university", "library", "training",
                                     "kindergarten", "Dormitory", "auditorium", "childcare",
                                     "preschool", "language_school", "music_school"}')
                                 """))
@@ -459,17 +517,33 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"townhall", "public_building", "embassy", "courthouse",
+                                    '{"townhall", "embassy", "courthouse",
                                     "police", "prison", "fire_station", "register_office",
-                                    "shelter", "grave_yard", "crematorium", "village_hall",
-                                    "post_box", "post_office", "ranger_station",
+                                    "grave_yard", "crematorium", "village_hall",
+                                    "post_office", "ranger_station",
                                     "funeral_hall", "waste_transfer_station"}')
+                                OR tags->'office' = 'government'
+                                """))
+                if t == "other_service":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = 'post_office'
+                                or tags ? 'craft'
+                                OR tags ? 'office'
+                                """))
+                if t == "post_box":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = 'post_box'
                                 """))
                 if t == "all_buildings_with_name":
                     tag_query_list.append(
                             sql.SQL(
                                 """
-                                (tags ? 'building' AND tags ? 'name')
+                                   (tags ? 'building' AND tags ? 'name')
+                                or (tags->'amenity' = 'public_building' AND tags ? 'name')
                                 """))
                 if t == "surveillance":
                     tag_query_list.append(
@@ -882,6 +956,8 @@ class POI:
         # description, alternative names and note
         if "description" in tags:
             point['description'] = tags['description']
+        if "inscription" in tags:
+            point['inscription'] = tags['inscription']
         if "alt_name" in tags:
             point['alt_name'] = tags['alt_name']
         if "old_name" in tags:
@@ -956,7 +1032,9 @@ class POI:
         # name
         if "name" in tags:
             segment['name'] = tags['name']
-        elif segment['sub_type'] != "":
+        elif "ref" in tags:
+            segment['name'] = tags['ref']
+        elif segment['sub_type']:
             segment['name'] = segment['sub_type']
         else:
             segment['name'] = self.translator.translate("poi", "way_segment")
@@ -1178,23 +1256,70 @@ class POI:
         crossing['type'] = "pedestrian_crossing"
 
         # sub type
-        if "crossing" in tags:
-            crossing['sub_type'] = self.translator.translate("crossing", tags['crossing'])
-        elif "highway" in tags and tags['highway'] == "crossing" \
-                and "crossing_ref" in tags and tags['crossing_ref'] in ["pelican", "toucan", "zebra"]:
-            crossing['sub_type'] = self.translator.translate("crossing", tags['crossing_ref'])
-        elif "highway" in tags and tags['highway'] == "traffic_signals":
-            crossing['sub_type'] = self.translator.translate("highway", "traffic_signals")
-        elif "railway" in tags and tags['railway'] == "crossing":
+        if "railway" in tags and tags['railway'] == "crossing":
             crossing['sub_type'] = self.translator.translate("railway", "crossing")
         else:
-            crossing['sub_type'] = self.translator.translate("crossing", "unknown")
+            crossing['sub_type'] = self.translator.translate("highway", "crossing")
+        # more detailed
+        detailed_sub_type = None
+        if "crossing" in tags and tags['crossing'] == "traffic_signals" \
+                or "crossing_ref" in tags and tags['crossing_ref'] in ["pelican", "toucan", "puffin"] \
+                or "highway" in tags and tags['highway'] == "traffic_signals":
+            detailed_sub_type = self.translator.translate("crossing", "traffic_signals")
+        elif "crossing" in tags and tags['crossing'] == "zebra" \
+                or "crossing_ref" in tags and tags['crossing_ref'] == "zebra" \
+                or "crossing:markings" in tags and tags['crossing:markings'].startswith("zebra"):
+            detailed_sub_type = self.translator.translate("crossing", "zebra")
+        elif "crossing" in tags and tags['crossing'] in ["uncontrolled", "marked"]:
+            detailed_sub_type = self.translator.translate("crossing", "uncontrolled")
+        elif "crossing" in tags and tags['crossing'] == "unmarked":
+            detailed_sub_type = self.translator.translate("crossing", "unmarked")
+        # add to sub_type
+        if detailed_sub_type:
+            crossing['sub_type'] += ", {}".format(detailed_sub_type)
 
         # name
-        if crossing_street_name != None:
+        if "name" in tags:
+            crossing['name'] = tags['name']
+        elif crossing_street_name:
             crossing['name'] = crossing_street_name
         else:
             crossing['name'] = crossing['sub_type']
+
+        # barrier
+        if "crossing:barrier" in tags:
+            if tags['crossing:barrier'] == "full":
+                crossing['crossing_barrier'] = "FULL"
+            elif tags['crossing:barrier'] in ["half", "double_half"]:
+                crossing['crossing_barrier'] = "HALF"
+            elif tags['crossing:barrier'] == "yes":
+                crossing['crossing_barrier'] = "YES"
+            elif tags['crossing:barrier'] == "no":
+                crossing['crossing_barrier'] = "NO"
+
+        # kerb
+        if "kerb" in tags:
+            if tags['kerb'] in ["yes", "regular"]:
+                crossing['kerb'] = "YES"
+            elif tags['kerb'] == "no":
+                crossing['kerb'] = "NO"
+            elif tags['kerb'] == "flush":
+                crossing['kerb'] = "FLUSH"
+            elif tags['kerb'] == "lowered":
+                crossing['kerb'] = "LOWERED"
+            elif tags['kerb'] == "rolled":
+                crossing['kerb'] = "ROLLED"
+            elif tags['kerb'] == "raised":
+                crossing['kerb'] = "RAISED"
+
+        # has island
+        if "crossing" in tags and tags['crossing'] == "island":
+            crossing['island'] = True
+        elif "crossing:island" in tags:
+            if tags['crossing:island'] == "yes":
+                crossing['island'] = True
+            elif tags['crossing:island'] == "no":
+                crossing['island'] = False
 
         # traffic signals attributes
         if "traffic_signals:sound" in tags:
@@ -1288,10 +1413,10 @@ class POI:
             poi['name'] = tags['description']
         elif "operator" in tags:
             poi['name'] = tags['operator']
-        elif "ref" in tags:
-            poi['name'] += " (%s)" % tags['ref']
         elif "display_name" in poi:
             poi['name'] = poi['display_name']
+        elif "ref" in tags:
+            poi['name'] = tags['ref']
         else:
             poi['name'] = poi['sub_type']
 
@@ -1530,7 +1655,8 @@ class POI:
 
 
     def parse_hstore_column(self, hstore_string):
-        hstore = {}
+        hstore = dict()
+
         # cut the first and last "
         hstore_string = hstore_string[1:hstore_string.__len__()-1]
         for entry in hstore_string.split("\", \""):
@@ -1538,6 +1664,21 @@ class POI:
             if len(keyvalue) != 2:
                 continue
             hstore[keyvalue[0]] = keyvalue[1]
+
+        # replace keys with translation if enabled and available
+        if self.prefer_translated_strings_in_osm_tags:
+            changes = dict()
+            for key, value in hstore.items():
+                base_key = key[:key.rfind(":")]
+                if key.endswith(":{}".format(self.translator.language)):
+                    if base_key in hstore:
+                        changes[base_key] = value
+                elif key.endswith(":{}".format(Config().default_language)):
+                    if base_key in hstore and base_key not in changes:
+                        changes[base_key] = value
+            if changes:
+                hstore.update(changes)
+
         return hstore
 
 

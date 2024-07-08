@@ -16,11 +16,12 @@ from .translator import Translator
 class PedestrianRoute:
 
     def __init__(self, map_id, session_id, user_language,
-            way_class_name_and_weight_map, way_ids_to_exclude):
+            way_class_name_and_weight_map, way_ids_to_exclude,
+            prefer_translated_strings_in_osm_tags):
         self.selected_db = DBControl(map_id)
         self.session_id = session_id
         self.translator = Translator(user_language)
-        self.poi = POI(map_id, session_id, user_language)
+        self.poi = POI(map_id, session_id, user_language, prefer_translated_strings_in_osm_tags)
         self.routing_table_name = Config().database.get("routing_table")
         self.temp_routing_table_name = "tmp_routing_%s" \
                 % re.sub(r'[^a-zA-Z0-9]', '', self.session_id)

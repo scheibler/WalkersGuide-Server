@@ -43,6 +43,7 @@ Point:
 + wheelchair:       Integer         wheelchair accessibility
                     [0 = no, 1 = limited, 2 = yes, default: unknown = -1]
 + description:      String          Additional description
++ inscription:      String          An inscription
 + alt_name          String
 + old_name          String
 + note              String
@@ -71,6 +72,9 @@ GPS:                            extends from point
 
 pedestrian_crossing:            extends from point
 * type:                         "pedestrian_crossing"
++ crossing_barrier              String          Used with railway crossings
++ island                        Boolean         Traffic island for pedestrians in the middle of the street
++ kerb                          String
 + traffic_signals_sound:        Integer         acustic signal for traffic signals
                                 [0 = no, 1 = yes, default: unknown = -1]
 + traffic_signals_vibration:    Integer         tactile signal for traffic signals

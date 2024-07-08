@@ -89,7 +89,8 @@ class RoutingWebService():
         try:
             pedestrian_route = PedestrianRoute(
                     input.get("map_id"), session_id, input.get("language"),
-                    input.get("allowed_way_classes"), input.get("blocked_ways"))
+                    input.get("allowed_way_classes"), input.get("blocked_ways"),
+                    input.get("prefer_translated_strings_in_osm_tags", False))
             result['route'] = pedestrian_route.calculate_route(input.get("source_points"))
         except WebserverException as e:
             pedestrian_route = None
@@ -136,7 +137,8 @@ class RoutingWebService():
         result = {}
         try:
             poi = POI(
-                    input.get("map_id"), session_id, input.get("language"))
+                    input.get("map_id"), session_id, input.get("language"),
+                    input.get("prefer_translated_strings_in_osm_tags", False))
             next_intersection_list = poi.next_intersections_for_way(
                     input.get("node_id"), input.get("way_id"), input.get("next_node_id"))
         except WebserverException as e:
@@ -180,7 +182,8 @@ class RoutingWebService():
         result = {}
         try:
             poi = POI(
-                    input.get("map_id"), session_id, input.get("language"))
+                    input.get("map_id"), session_id, input.get("language"),
+                    input.get("prefer_translated_strings_in_osm_tags", False))
             poi_list = poi.get_poi(
                     input.get("lat"), input.get("lon"),
                     input.get("radius"), input.get("number_of_results"),
@@ -226,7 +229,8 @@ class RoutingWebService():
         result = {}
         try:
             poi = POI(
-                    input.get("map_id"), session_id, input.get("language"))
+                    input.get("map_id"), session_id, input.get("language"),
+                    input.get("prefer_translated_strings_in_osm_tags", False))
             trail_list = poi.get_hiking_trails(
                     input.get("lat"), input.get("lon"), input.get("radius"))
         except WebserverException as e:

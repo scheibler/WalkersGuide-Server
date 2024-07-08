@@ -319,21 +319,19 @@ class Translator:
             if tag == "trunk_link": return "Fernstraßenauffahrt"
             if tag == "unclassified": return "Landstraße"
             if tag == "unsurfaced": return "nichtasphaltierte Straße"
-            if tag == "crossing": return "Kreuzung"
+            if tag == "crossing": return "Querung"
             if tag == "roundabout": return "Kreisverkehr"
             if tag == "traffic_signals": return "Ampelkreuzung"
 
         if category == "railway":
             if tag == "abandoned": return "aufgelassene Bahnstrecke"
             if tag == "construction": return "Eisenbahn im Bau"
-            if tag == "crossing": return "Bahnübergang"
             if tag == "disused": return "unbenutzte Bahnstrecke"
             if tag == "disused_station": return "unbenutzer Bahnhof"
             if tag == "funicular": return "Seilbahn"
             if tag == "halt": return "Haltepunkt"
             if tag == "historic_station": return "historischer Bahnhof"
             if tag == "junction": return "Bahnknotenpunkt"
-            if tag == "level_crossing": return "Eisenbahnkreuzung"
             if tag == "light_rail": return "S-Bahn"
             if tag == "miniature": return "Miniaturbahn"
             if tag == "monorail": return "Einschienenbahn"
@@ -349,6 +347,7 @@ class Translator:
             if tag == "tram": return "Straßenbahn"
             if tag == "tram_stop": return "Straßenbahnhaltestelle"
             if tag == "yard": return "Rangierbahnhof"
+            if tag in ["crossing", "level_crossing"]: return "Bahnübergang"
 
         if category == "public_transport":
             if tag == "bus": return "Bushaltestelle"
@@ -364,14 +363,10 @@ class Translator:
             if tag == "yes": return "Brücke"
 
         if category == "crossing":
-            if tag == "traffic_signals": return "Fußgängerampel"
-            if tag == "pelican": return "Fußgängerampel"
-            if tag == "toucan": return "Fußgängerampel"
-            if tag == "island": return "Verkehrsinsel"
-            if tag == "uncontrolled": return "Zebrastreifen"
+            if tag == "traffic_signals": return "Ampel"
             if tag == "zebra": return "Zebrastreifen"
-            if tag == "unmarked": return "Ungeregelte Straßenquerung"
-            if tag == "unknown": return "Straßenquerung"
+            if tag == "uncontrolled": return "ungeregelt"
+            if tag == "unmarked": return "unmarkiert"
 
         if category == "historic":
             if tag == "archaeological_site": return "Ausgrabungsstätte"
@@ -516,6 +511,10 @@ class Translator:
             if tag == "town": return "Stadt"
             if tag == "unincorporated_area": return "gemeindefreies Gebiet"
             if tag == "village": return "Dorf"
+
+        if category == "office":
+            if tag == "government": return "Amt oder Behörde"
+            if tag == "yes": return "Büro"
 
         if category == "shop":
             if tag == "alcohol": return "Spirituosenladen"
@@ -931,21 +930,19 @@ class Translator:
             if tag == "trunk_link": return "Trunk Road"
             if tag == "unclassified": return "Unclassified Road"
             if tag == "unsurfaced": return "Unsurfaced Road"
-            if tag == "crossing": return "Intersection"
+            if tag == "crossing": return "crossing"
             if tag == "roundabout": return "Roundabout"
-            if tag == "traffic_signals": return "Intersection with traffic signals"
+            if tag == "traffic_signals": return "Traffic light intersection"
 
         if category == "railway":
             if tag == "abandoned": return "Abandoned Railway"
             if tag == "construction": return "Railway under Construction"
-            if tag == "crossing": return "Pedestrian level crossing"
             if tag == "disused": return "Disused Railway"
             if tag == "disused_station": return "Disused Railway Station"
             if tag == "funicular": return "Funicular Railway"
             if tag == "halt": return "Train Stop"
             if tag == "historic_station": return "Historic Railway Station"
             if tag == "junction": return "Railway Junction"
-            if tag == "level_crossing": return "Level Crossing"
             if tag == "light_rail": return "Light Rail"
             if tag == "miniature": return "Miniature Railway"
             if tag == "monorail": return "Monorail"
@@ -961,6 +958,7 @@ class Translator:
             if tag == "tram": return "Tramway"
             if tag == "tram_stop": return "Tram Stop"
             if tag == "yard": return "Railway Yard"
+            if tag in ["crossing", "level_crossing"]: return "Railway crossing"
 
         if category == "public_transport":
             if tag == "bus": return "Bus Stop"
@@ -976,14 +974,10 @@ class Translator:
             if tag == "yes": return "Bridge"
 
         if category == "crossing":
-            if tag == "traffic_signals": return "Traffic signals"
-            if tag == "pelican": return "Traffic signals"
-            if tag == "toucan": return "Traffic signals"
-            if tag == "island": return "Traffic island"
-            if tag == "uncontrolled": return "Zebra crossing"
-            if tag == "zebra": return "Zebra crossing"
-            if tag == "unmarked": return "Unmarked crossing"
-            if tag == "unknown": return "Pedestrian crossing"
+            if tag == "traffic_signals": return "traffic signals"
+            if tag == "zebra": return "zebra"
+            if tag == "uncontrolled": return "uncontrolled"
+            if tag == "unmarked": return "unmarked"
 
         if category == "historic":
             if tag == "archaeological_site": return "Archaeological Site"
@@ -1129,6 +1123,10 @@ class Translator:
             if tag == "town": return "Town"
             if tag == "unincorporated_area": return "Unincorporated Area"
             if tag == "village": return "Village"
+
+        if category == "office":
+            if tag == "government": return "Government"
+            if tag == "yes": return "Office"
 
         if category == "shop":
             if tag == "alcohol": return "Off License"

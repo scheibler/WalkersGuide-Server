@@ -44,6 +44,7 @@ get_route():
     + allowed_way_classes: Dict<String:Double>
     + blocked_ways: List<Integer>
     + language: String      ["de", "en"]
+    + prefer_translated_strings_in_osm_tags: Boolean
 * output: gzipped json
     * description: String
     * route: List<Point,Segment,Point,...>
@@ -56,6 +57,7 @@ get_next_intersections_for_way():
     * way_id: Long
     * next_node_id: Long
     + language: String      ["de", "en"]
+    + prefer_translated_strings_in_osm_tags: Boolean
 * output: gzipped json
     * next_intersections: List<Point>
 
@@ -67,6 +69,7 @@ get_hiking_trails():
     * lon: Double
     * radius: Integer
     + language: String      ["de", "en"]
+    + prefer_translated_strings_in_osm_tags: Boolean
 * output: gzipped json
     * hiking_trails: List<HikingTrail>
 
@@ -80,6 +83,7 @@ get_poi():
     * number_of_results: Integer
     * tags: List<String>
     + language: String      ["de", "en"]
+    + prefer_translated_strings_in_osm_tags: Boolean
     + search: String
 * output: gzipped json
     * poi: List<Point>

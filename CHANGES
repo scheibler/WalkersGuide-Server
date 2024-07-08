@@ -3,6 +3,28 @@ Change Log
 
 
 
+v1.5.0: 2024-07-08
+------------------
+
+Webserver API:
+- New input parameter prefer_translated_strings_in_osm_tags
+  Prefers translations in osm tags if available
+  For example: 'name:en' instead of 'name'
+
+POI categories:
+- New: other_service, post_box, partially_named_intersection and railway_intersection
+- More precise sql queries for: public_service, shop and health
+
+Point:
+- New attribute: inscription
+
+Pedestrian crossing:
+- New attributes: barrier, island and kerb
+- name and sub_type reworked
+- Improved translations
+
+
+
 v1.4.5: 2024-03-13
 ------------------
 
