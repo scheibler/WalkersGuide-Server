@@ -36,7 +36,7 @@ route creation functions and returns the results to the client.
 Installation
 ------------
 
-This section lists the required steps to install the WalkersGuide server under Debian 11 (Bullseye).
+This section lists the required steps to install the WalkersGuide server under Debian 12 (Bookworm).
 
 
 ### Postgresql, Postgis and pgrouting ###
@@ -45,7 +45,7 @@ Install Postgresql, Postgis (an extension to handle spacial data types like poin
 You must at least use Postgresql >= 11, Postgis >= 2.5 and pgrouting >= 2.5:
 
 ```
-root# apt install postgresql-13 postgresql-13-postgis-3 postgresql-13-pgrouting
+root# apt install postgresql-15 postgresql-15-postgis-3 postgresql-15-pgrouting
 ```
 
 Then create a new database user and assign a password. It must be a super user:
@@ -59,7 +59,7 @@ postgres$ exit
 After that, change database access permissions in the file
 
 ```
-root# vim /etc/postgresql/13/main/pg_hba.conf
+root# vim /etc/postgresql/15/main/pg_hba.conf
 ```
 
 to the following ones:
@@ -88,15 +88,15 @@ host    all             wgs_writer      ::1/128                 md5
 
 Now you have to change some settings in the Postgresql main config. The defaults are fairly
 conservative and often don't fit the needs for a large db. The settings hardly depend on the
-hardware of your server. These are mine for a server with a Ryzen 3600 CPU, 64 GB Ram and 2 TB SSD:
+hardware of your server. These are mine for a server with a Ryzen 3600 CPU, 64 GB Ram and 4 TB SSD:
 
 ```
-root# vim /etc/postgresql/13/main/postgresql.conf
+root# vim /etc/postgresql/15/main/postgresql.conf
 [...]
 #------------------------------------------------------------------------------
 # CUSTOMIZED OPTIONS
 #------------------------------------------------------------------------------
-data_directory = '/mnt/navi/postgresql/11/main'
+data_directory = '/mnt/navi/postgresql/15/main'
 max_connections = 15
 # buffers
 effective_cache_size = 32GB
@@ -107,6 +107,7 @@ temp_buffers = 64MB
 # ssd
 seq_page_cost = 1.0
 random_page_cost = 1.0
+effective_io_concurrency = 100
 # misc optimizations
 checkpoint_completion_target = 0.9
 default_statistics_target = 500
@@ -191,19 +192,7 @@ osm$ rm -R hh
 Install git, pip, parallel and screen
 
 ```
-root# apt install git python3-pip moreutils screen
-root# pip3 install virtualenv
-```
-
-Create python virtual environment:
-
-```
-osm$ cd /mnt/navi
-# create
-osm$ mkdir virtualenv
-osm$ cd virtualenv
-osm$ virtualenv [-p python3] walkersguide
-osm$ ./walkersguide/bin/pip install requests configobj cherrypy psycopg2-binary
+root# apt install git python3-pip python3-venv moreutils screen
 ```
 
 Clone the WalkersGuide-Server repository
@@ -218,6 +207,22 @@ Enter the project directory and create some folders:
 ```
 cd walkersguide
 mkdir config logs
+```
+
+Create python virtual environment and install dependencies:
+
+```
+osm$ python3 -m venv .
+osm$ source ./bin/activate
+(walkersguide) osm$ pip install requests configobj cherrypy psycopg2-binary
+(walkersguide) osm$ deactivate
+```
+
+If you later want to remove the python virtual environment again:
+
+```
+osm$ cd /mnt/navi/walkersguide
+osm$ rm -R bin include lib lib64 pyvenv.cfg
 ```
 
 Copy the osm2po configuration file.  The config file from the example config
@@ -251,13 +256,13 @@ Create a new country/region database:
 
 ```
 osm$ cd /mnt/navi/walkersguide
-osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py create-map-database germany
+osm$ ./run create-map-database germany
 ```
 
 Afterwards launch the webserver:
 
 ```
-osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py start-webserver
+osm$ ./run start-webserver
 ```
 
 Test with:
@@ -269,12 +274,6 @@ osm$ wget --header='Accept-Encoding: gzip' https://walkersguide.example.com/get_
 Since version 1.3.2 the WalkersGuide server provides some very basic map usage statistics:
 
 ```
-osm$ /mnt/navi/virtualenv/walkersguide-dev/bin/python wg_server.py statistics
-```
-
-Optional: Add an alias to your shell configuration:
-
-```
-alias wg='/mnt/navi/virtualenv/walkersguide/bin/python wg_server.py'
+osm$ ./run statistics
 ```
 

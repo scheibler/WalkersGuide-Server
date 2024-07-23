@@ -165,8 +165,8 @@ class POI:
         ###############
         # intersections
         ###############
-        intersection_tag_list = ["named_intersection", "partially_named_intersection", "other_intersection",
-                "named_railway_intersection", "other_railway_intersection"]
+        intersection_tag_list = ["named_intersection", "partially_named_intersection",
+                                 "other_intersection", "railway_intersection"]
         if [True for tag in tag_list if tag in intersection_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
@@ -598,7 +598,7 @@ class POI:
                         """
                         WITH closest_points AS (
                             SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
-                        SELECT id, osm_id, ST_X(geom) as lon, ST_Y(geom) as lat, tags,
+                        SELECT id, osm_id, osm_type, ST_X(geom) as lon, ST_Y(geom) as lat, tags,
                                 outer_building_id, number_of_entrances
                         FROM closest_points {c_order_by_and_limit_query}
                         """
@@ -611,7 +611,7 @@ class POI:
 
             for row in result:
                 poi_id = int(row['id'])
-                osm_id = int(row['osm_id'])
+                osm_id = int(row['osm_id']) if row['osm_type'] == "N" else 0
                 poi_tags = self.parse_hstore_column(row['tags'])
                 outer_building_id = int(row['outer_building_id'])
                 poi = self.create_poi(poi_id, osm_id, row['lat'], row['lon'], poi_tags, outer_building_id, row['number_of_entrances'])
@@ -937,8 +937,12 @@ class POI:
             point['name'] = self.translator.translate("poi", "way_point")
         point['lat'] = lat
         point['lon'] = lon
+
         # optional attributes
-        point['node_id'] = osm_node_id
+        if osm_node_id > 0:
+            point['node_id'] = osm_node_id
+        if "ele" in tags:
+            point['ele'] = tags['ele']
         if "tactile_paving" in tags:
             if tags['tactile_paving'] == "no":
                 point['tactile_paving'] = 0
@@ -953,9 +957,15 @@ class POI:
                 point['wheelchair'] = 1
             elif tags['wheelchair'] == "yes":
                 point['wheelchair'] = 2
+
         # description, alternative names and note
+        description_list = list()
         if "description" in tags:
-            point['description'] = tags['description']
+            description_list.append(tags['description'])
+        if "blind:description" in tags:
+            description_list.append(tags['blind:description'])
+        if description_list:
+            point['description'] = '\n\n'.join(description_list)
         if "inscription" in tags:
             point['inscription'] = tags['inscription']
         if "alt_name" in tags:
@@ -1017,6 +1027,8 @@ class POI:
                     else:
                         segment['beware_bicyclists'] = 0
             # additional information
+            if tags.get("junction") == "roundabout":
+                segment['sub_type'] += ", %s" % self.translator.translate("highway", "roundabout")
             if tags['highway'] in ["footway", "path", "track"]:
                 if "surface" in tags:
                     segment['sub_type'] += ", %s" % self.translator.translate("surface", tags['surface'])
@@ -1040,6 +1052,8 @@ class POI:
             segment['name'] = self.translator.translate("poi", "way_segment")
 
         # optional attributes
+        if osm_way_id > 0:
+            segment['way_id'] = osm_way_id
         if "description" in tags:
             segment['description'] = tags['description']
         if "lanes" in tags:
@@ -1084,7 +1098,6 @@ class POI:
                 segment['tactile_paving'] = 1
             elif tags['tactile_paving'] == "incorrect":
                 segment['tactile_paving'] = 2
-        segment['way_id'] = osm_way_id
         if "wheelchair" in tags:
             if tags['wheelchair'] == "no":
                 segment['wheelchair'] = 0
@@ -1360,6 +1373,9 @@ class POI:
             if "cuisine" in tags:
                 poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
                         self.translator.translate("cuisine", tags['cuisine']))
+            elif "shelter_type" in tags:
+                poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
+                        self.translator.translate("shelter_type", tags['shelter_type']))
             elif "vending" in tags:
                 poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
                         self.translator.translate("vending", tags['vending']))
@@ -1368,7 +1384,11 @@ class POI:
         elif "bridge" in tags:
             poi['sub_type'] = self.translator.translate("bridge", tags['bridge'])
         elif "tourism" in tags:
-            poi['sub_type'] = self.translator.translate("tourism", tags['tourism'])
+            if tags['tourism'] in ["artwork", "information"] \
+                    and "information" in tags:
+                poi['sub_type'] = self.translator.translate("tourism:information", tags['information'])
+            else:
+                poi['sub_type'] = self.translator.translate("tourism", tags['tourism'])
         elif "historic" in tags:
             poi['sub_type'] = self.translator.translate("historic", tags['historic'])
         elif "leisure" in tags:
@@ -1476,9 +1496,6 @@ class POI:
                         self.parse_hstore_column(row['tags']), row['label'])
                 poi['entrance_list'].append(entrance)
 
-        # other attributes
-        if "ele" in tags:
-            poi['ele'] = tags['ele']
         return poi
 
 
@@ -1671,11 +1688,10 @@ class POI:
             for key, value in hstore.items():
                 base_key = key[:key.rfind(":")]
                 if key.endswith(":{}".format(self.translator.language)):
-                    if base_key in hstore:
-                        changes[base_key] = value
-                elif key.endswith(":{}".format(Config().default_language)):
-                    if base_key in hstore and base_key not in changes:
-                        changes[base_key] = value
+                    changes[base_key] = value
+                elif key.endswith(":{}".format(Config().default_language)) \
+                        and base_key not in changes:
+                    changes[base_key] = value
             if changes:
                 hstore.update(changes)
 

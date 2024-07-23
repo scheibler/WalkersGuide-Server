@@ -32,7 +32,9 @@ class DBControl():
                     password = Config().database.get("password"),
                     database=map_id)
         except (Exception, psycopg2.DatabaseError) as error:
-            logging.fatal("Could not create database connection pool")
+            raise WebserverException(
+                    ReturnCode.MAP_LOADING_FAILED,
+                    "Could not create database connection pool: {}".format(error))
 
         # create access statistics table, if it doesn't exist yet
         self.edit_database(

@@ -1,0 +1,8 @@
+#!/bin/bash
+
+# Check if the virtual environment is already activated
+if [[ -z "$VIRTUAL_ENV" ]]; then
+    source ./bin/activate
+fi
+
+python wg_server.py $@

@@ -5,3 +5,10 @@ __pycache__/
 shell/configuration.sh
 shell/.in_progress
 shell/tmp/
+
+# venv
+bin/
+include/
+lib/
+lib64
+pyvenv.cfg

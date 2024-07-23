@@ -13,16 +13,19 @@ from webserver.constants import server_version, supported_api_version_list, supp
 from webserver.helper import exit, pretty_print_table, send_email
 
 
+def list_map_ids():
+    return ', '.join(list(Config().maps.keys()))
+
+
 def create_map_database(map_id):
+    map = Config().maps.get(map_id)
+
     # check for running map creation process
     if os.path.exists(Config().paths.get("shell_lock_file")):
         exit("Already running map creation process found.", prefix="Map Creation failed\n")
+    # create lock file
     with open(Config().paths.get("shell_lock_file"), "w") as lock_file:
         lock_file.write("Creation of map %s in progress" % map_id)
-    # load map
-    map = Config().maps.get(map_id)
-    if not map:
-        exit("Map id %s not found in config file" % map_id, prefix="Map Creation failed\n")
 
     # create configuration file for the shell script
     shell_config = []
@@ -140,30 +143,61 @@ def main():
     # create cli parser
     parser = argparse.ArgumentParser(description="WalkersGuide-Server")
     parser.add_argument("-v", "--version", action="version", version=print_version_info())
+
     subparsers = parser.add_subparsers(dest="action")
+    create_database_aliases = ['create', 'cmd']
     create_database = subparsers.add_parser(
-            "create-map-database",
+            "create-map-database", aliases=create_database_aliases,
             description="Start a script to create a new map database thats already in the config file",
             help="Start a script to create a new map database thats already in the config file")
     create_database.add_argument(
-            'map_id', nargs='?', help='The map id from config')
-    # start webserver
+            '--all', action='store_true', help='Create all databases listed in the config file')
+    create_database.add_argument(
+            'map_ids', nargs='*', help='The map id from config')
+    # list maps
+    list_databases_aliases = ['list', 'lmd', 'ls']
     subparsers.add_parser(
-            "start-webserver",
+            "list-map-databases", aliases=list_databases_aliases,
+            description="List map ids from config file",
+            help="List map ids from config file")
+    # start webserver
+    start_webserver_aliases = ['start']
+    subparsers.add_parser(
+            "start-webserver", aliases=start_webserver_aliases,
             description="Start webserver for client communication",
             help="Start webserver for client communication")
     # statistics
+    statistics_aliases = ['stats']
     subparsers.add_parser(
-            "statistics",
+            "statistics", aliases=statistics_aliases,
             description="Show usage statistics",
             help="Show usage statistics")
-
     args = parser.parse_args()
-    if args.action == "create-map-database":
-        create_map_database(args.map_id)
-    elif args.action == "start-webserver":
+
+    if args.action == "create-map-database" \
+            or args.action in create_database_aliases:
+        if not args.map_ids:
+            if args.all:
+                args.map_ids = list(Config().maps.keys())
+            else:
+                exit("No map ids given.\nAvailable maps: {}".format(
+                        list_map_ids()), prefix="Map Creation failed\n")
+        for map_id in args.map_ids:
+            if map_id not in Config().maps.keys():
+                exit("Map id {} not found in config file.\nAvailable maps: {}".format(
+                        map_id, list_map_ids()), prefix="Map Creation failed\n")
+        # create maps
+        for map_id in args.map_ids:
+            create_map_database(map_id)
+
+    elif args.action == "list-map-databases" \
+            or args.action in list_databases_aliases:
+        print(list_map_ids())
+    elif args.action == "start-webserver" \
+            or args.action in start_webserver_aliases:
         start_webserver()
-    elif args.action == "statistics":
+    elif args.action == "statistics" \
+            or args.action in statistics_aliases:
         show_statistics()
 
 

@@ -3,6 +3,21 @@ Change Log
 
 
 
+v1.5.1: 2024-07-24
+------------------
+
+- wg_server.py: Action aliases added
+    - create-map-database -> create or cmd
+    - list-map-databases: list, ls or lmd
+    - start-webserver: start
+    - statistics: stats
+- New bash script './run' to enable the python virtual environment and launch wg_server.py with one command
+- More details for poi "shelter" and "tourist information"
+- Bug fix in db_control.py: Couldn't handle unknown map ids properly
+- README updated: New installation instructions for Debian 12 (Bookworm)
+
+
+
 v1.5.0: 2024-07-08
 ------------------
 

@@ -11,7 +11,7 @@ import sys
 from typing import List
 
 
-def exit(message, prefix="Error in config file\n"):
+def exit(message, prefix="Error in config file\n", rc=1):
     """Exit with a message and a return code indicating an error in the config
     file.
     This function doesn't return, it calls sys.exit.
@@ -19,10 +19,12 @@ def exit(message, prefix="Error in config file\n"):
     :type message: str
     :param prefix: the prefix to put in front of the message
     :type prefix: str
+    :param rc: the return code
+    :type rc: int
     :returns: does not return
     """
     print(prefix+message)
-    sys.exit(1)
+    sys.exit(rc)
 
 
 def pretty_print_table(table: List[List[str]], justify: str = "L", column_separator: str = " ") -> str:

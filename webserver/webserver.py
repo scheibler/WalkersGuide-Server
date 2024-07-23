@@ -321,6 +321,8 @@ class RoutingWebService():
         for map_id, map_data in Config().maps.items():
             try:
                 db = DBControl(map_id)
+            except WebserverException as e:
+                logging.warning(e)
             except Exception as e:
                 logging.critical(e, exc_info=True)
                 if int(time.time()) - self.last_map_exception_email_sent > self.email_resend_delay:

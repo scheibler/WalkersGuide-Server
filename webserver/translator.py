@@ -216,7 +216,7 @@ class Translator:
             if tag == "retirement_home": return "Altersheim"
             if tag == "sauna": return "Sauna"
             if tag == "school": return "Schule"
-            if tag == "shelter": return "Schutzhütte"
+            if tag == "shelter": return "Unterstand"
             if tag == "shop": return "Geschäft"
             if tag == "shopping": return "Einkaufszentrum"
             if tag == "social_club": return "Geselligkeitsverein"
@@ -600,7 +600,7 @@ class Translator:
             if tag == "guest_house": return "Pension"
             if tag == "hostel": return "Jugendherberge"
             if tag == "hotel": return "Hotel"
-            if tag == "information": return "Touristen-Information"
+            if tag == "information": return "Touristen-information"
             if tag == "lean_to": return "Anbau"
             if tag == "motel": return "Motel"
             if tag == "museum": return "Museum"
@@ -609,6 +609,26 @@ class Translator:
             if tag == "valley": return "Tal"
             if tag == "viewpoint": return "Aussichtspunkt"
             if tag == "zoo": return "Zoo"
+
+        if category == "tourism:information":
+            if tag == "office": return "Touristenbüro"
+            if tag == "visitor_centre": return "Besucherzentrum"
+            if tag == "terminal": return "Informationsterminal"
+            if tag in ["stele", "board"]: return "Informationstafel"
+            if tag == "map": return "Landkarte"
+            if tag == "audioguide": return "Audio Guide"
+            if tag == "tactile_map": return "Taktile Karte"
+            if tag == "tactile_model": return "Tastmodell"
+            if tag == "guidepost": return "Wegweiser"
+            if tag in ["route_marker", "trail_blaze"]: return "Wegerkennungsmarker"
+
+        if category == "shelter_type":
+            if tag in ["basic_hut", "weather_shelter"]: return "Einfache Hütte"
+            if tag == "field_shelter": return "Für Tiere"
+            if tag == "picnic_shelter": return "Für Picknick"
+            if tag == "public_transport": return "ÖPNV Wartehäuschen"
+            if tag == "rock_shelter": return "Höhleneingang"
+            if tag == "sun_shelter": return "Sonnenschutz"
 
         if category == "waterway":
             if tag == "boatyard": return "Werft"
@@ -1212,7 +1232,7 @@ class Translator:
             if tag == "guest_house": return "Guest House"
             if tag == "hostel": return "Hostel"
             if tag == "hotel": return "Hotel"
-            if tag == "information": return "Information"
+            if tag == "information": return "Tourist information"
             if tag == "lean_to": return "Lean To"
             if tag == "motel": return "Motel"
             if tag == "museum": return "Museum"
@@ -1221,6 +1241,26 @@ class Translator:
             if tag == "valley": return "Valley"
             if tag == "viewpoint": return "Viewpoint"
             if tag == "zoo": return "Zoo"
+
+        if category == "tourism:information":
+            if tag == "office": return "Tourist office"
+            if tag == "visitor_centre": return "Visitor centre"
+            if tag == "terminal": return "Information terminal"
+            if tag in ["stele", "board"]: return "Information board"
+            if tag == "map": return "Map"
+            if tag == "audioguide": return "Audio guide"
+            if tag == "tactile_map": return "Taktile map"
+            if tag == "tactile_model": return "Tactile model"
+            if tag == "guidepost": return "Guide post"
+            if tag in ["route_marker", "trail_blaze"]: return "Route marker"
+
+        if category == "shelter_type":
+            if tag in ["basic_hut", "weather_shelter"]: return "Basic hut"
+            if tag == "field_shelter": return "For animals"
+            if tag == "picnic_shelter": return "For a picnic"
+            if tag == "public_transport": return "For public transport"
+            if tag == "rock_shelter": return "cave entrance"
+            if tag == "sun_shelter": return "sun shelter"
 
         if category == "waterway":
             if tag == "boatyard": return "Boatyard"

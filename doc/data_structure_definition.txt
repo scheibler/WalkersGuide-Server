@@ -38,6 +38,7 @@ Point:
 * lon:              Double
 + node_id:          Long            node id from osm database
                     [node_id >= 0, default: unknown = -1]
++     ele:        Double            Elevation over sea level in meters
 + tactile_paving:   Integer         tactile markings for white cane users
                     [0 = no, 1 = yes, 2 = incorrect, default: unknown = -1]
 + wheelchair:       Integer         wheelchair accessibility
