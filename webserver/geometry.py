@@ -3,6 +3,8 @@
 
 import math
 
+from psycopg2 import sql
+
 
 def add_bearing_and_distance_to_segment(segment, lat1, lon1, lat2, lon2):
     segment['start']    = { "lat": lat1, "lon": lon1 }
@@ -96,6 +98,21 @@ def get_center_point(lat1, lon1, lat2, lon2):
     else:
         center_point['lon'] = lon2 + math.fabs(lon1-lon2)/2
     return center_point
+
+
+def get_boundary_box_query(table_name=None):
+    return sql.SQL(
+            """
+            {c_geom_column_name} && ST_MakeEnvelope(
+                    {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
+            """
+            ).format(
+                    c_geom_column_name=sql.SQL(
+                        "%s.geom" % table_name if table_name else "geom"),
+                    p_boundaries_left=sql.Placeholder(name='boundaries_left'),
+                    p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
+                    p_boundaries_right=sql.Placeholder(name='boundaries_right'),
+                    p_boundaries_top=sql.Placeholder(name='boundaries_top'))
 
 
 def get_boundary_box(lat, lon, radius):

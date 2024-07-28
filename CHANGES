@@ -3,6 +3,13 @@ Change Log
 
 
 
+v1.5.2: 2024-07-28
+------------------
+
+POI: Shortened response time for category railway_intersection (inefficient SQL query)
+
+
+
 v1.5.1: 2024-07-24
 ------------------
 

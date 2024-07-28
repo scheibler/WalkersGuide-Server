@@ -228,36 +228,47 @@ class POI:
                 tags_where_clause_query_list.append(
                         sql.SQL(
                             """
-                            id IN (
-                                SELECT DISTINCT(i.id)
-                                FROM {i_intersections} i JOIN {i_intersection_data} id
-                                ON i.id = id.id
-                                WHERE id.way_tags->'railway' = ANY(
-                                    '{{"light_rail", "miniature", "monorail",
-                                    "narrow_gauge", "rail", "subway", "tram"}}'))
-                            """).format(
-                                i_intersections=sql.Identifier(
-                                    Config().database.get("intersection_table")),
-                                i_intersection_data=sql.Identifier(
-                                    Config().database.get("intersection_data_table")))
-                            )
+                            id in (SELECT id FROM tmp_railway_intersection_ids)
+                            """))
 
             # and append
             where_clause_query_list.append(
                     sql.SQL(" OR ").join(tags_where_clause_query_list))
 
-            table_name = Config().database.get("intersection_table")
             result = self.selected_db.fetch_all(
                     sql.SQL(
                         """
+
+                        CREATE TEMP TABLE tmp_railway_intersection_ids AS
+                            SELECT DISTINCT(i.id)
+                            FROM {i_intersections} i JOIN {i_intersection_data} id
+                            ON i.id = id.id
+                            WHERE {c_tags_contain_railway_intersection}
+                                AND {c_boundary_box_query}
+                                AND id.way_tags->'railway' = ANY(
+                                    '{{"light_rail", "miniature", "monorail",
+                                    "narrow_gauge", "rail", "subway", "tram"}}');
+                        CREATE  INDEX  idx_id
+                            ON tmp_railway_intersection_ids
+                            USING  btree (id);
+
                         WITH closest_points AS (
-                            SELECT * FROM {i_table_name} WHERE {c_where_clause_query})
+                            SELECT * FROM {i_intersections} WHERE {c_where_clause_query}
+                        )
+
                         SELECT id, ST_X(geom) as lon, ST_Y(geom) as lat, name, tags, number_of_streets,
                                 number_of_streets_with_name, number_of_traffic_signals
                         FROM closest_points {c_order_by_and_limit_query}
                         """
                         ).format(
-                                i_table_name=sql.Identifier(table_name),
+
+                                i_intersections=sql.Identifier(
+                                    Config().database.get("intersection_table")),
+                                i_intersection_data=sql.Identifier(
+                                    Config().database.get("intersection_data_table")),
+                                c_tags_contain_railway_intersection=sql.SQL(
+                                    "true" if "railway_intersection" in tag_list else "false"),
+                                c_boundary_box_query=geometry.get_boundary_box_query("i"),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
                                 c_order_by_and_limit_query=order_by_and_limit_query),
                     where_clause_param_dict)
@@ -1636,16 +1647,7 @@ class POI:
                         ReturnCode.BAD_REQUEST, "No radius")
 
         # boundary box sql query
-        boundary_box_query = sql.SQL(
-                """
-                geom && ST_MakeEnvelope(
-                        {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
-                """
-                ).format(
-                        p_boundaries_left=sql.Placeholder(name='boundaries_left'),
-                        p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
-                        p_boundaries_right=sql.Placeholder(name='boundaries_right'),
-                        p_boundaries_top=sql.Placeholder(name='boundaries_top'))
+        boundary_box_query = geometry.get_boundary_box_query()
         # params
         boundaries = geometry.get_boundary_box(lat, lon, radius)
         boundary_box_query_params = {
