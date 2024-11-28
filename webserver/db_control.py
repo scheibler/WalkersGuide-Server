@@ -22,6 +22,10 @@ class DBControl():
             raise WebserverException(
                     ReturnCode.MAP_LOADING_FAILED,
                     'No map id')
+        elif map_id not in Config().maps.keys():
+            raise WebserverException(
+                    ReturnCode.MAP_LOADING_FAILED,
+                    'Map not available')
 
         try:
             self.connection_pool = psycopg2.pool.SimpleConnectionPool(

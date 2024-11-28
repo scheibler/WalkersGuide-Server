@@ -104,6 +104,7 @@ shared_buffers = 16GB
 maintenance_work_mem = 6GB
 work_mem = 768MB
 temp_buffers = 64MB
+max_locks_per_transaction = 256
 # ssd
 seq_page_cost = 1.0
 random_page_cost = 1.0

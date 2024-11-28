@@ -188,8 +188,10 @@ BEGIN
                     ELSE
                         street_types := array_append(street_types, row.way_tags->'highway'::text);
                     END IF;
-                ELSE
+                ELSIF row.way_tags->'railway' != '' THEN
                     street_types := array_append(street_types, row.way_tags->'railway'::text);
+                ELSE
+                    street_types := array_append(street_types, 'Unknown');
                 END IF;
             END LOOP;
             -- clean temp tables

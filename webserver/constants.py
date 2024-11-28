@@ -1,7 +1,7 @@
-server_version = '1.5.2'
+server_version = '1.5.3'
 supported_api_version_list = [ 3, 4 ]
 supported_map_version_list = [ 2, 3 ]
-supported_language_list = ["en", "de"]
+supported_language_list = ["en", "de", "uk"]
 supported_feedback_token_list = ["question", "map_request", "pt_provider_request"]
 # routing constants
 max_distance_between_start_and_destination_in_meters = 30000

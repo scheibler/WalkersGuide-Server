@@ -189,6 +189,7 @@ def main():
         # create maps
         for map_id in args.map_ids:
             create_map_database(map_id)
+            time.sleep(60)
 
     elif args.action == "list-map-databases" \
             or args.action in list_databases_aliases:
