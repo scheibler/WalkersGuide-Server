@@ -3,7 +3,7 @@
 
 import argparse, datetime, logging, time
 import os, sys
-from subprocess import Popen, STDOUT
+from subprocess import Popen, PIPE, STDOUT
 
 import webserver.statistics as statistics
 import webserver.webserver as webserver
@@ -18,6 +18,7 @@ def list_map_ids():
 
 
 def create_map_database(map_id):
+    print(f"Create map {map_id}")
     map = Config().maps.get(map_id)
 
     # check for running map creation process
@@ -41,10 +42,9 @@ def create_map_database(map_id):
     shell_config += ['osm2po_config="%s"' % Config().java.get("osm2po_config")]
     # database connection
     shell_config += ['\n# database connection']
-    shell_config += ['export PGHOST="%s"' % Config().database.get("host_name")]
-    shell_config += ['export PGPORT=%d' % Config().database.get("port")]
-    shell_config += ['export PGUSER="%s"' % Config().database.get("user")]
-    shell_config += ['export PGPASSWORD="%s"' % Config().database.get("password")]
+    for db_connection_env_key, db_connection_env_value \
+            in Config().get_database_connection_environment_variables().items():
+        shell_config += [f"export {db_connection_env_key}={db_connection_env_value}"]
     # database settings
     shell_config += ['\n# database settings']
     shell_config += ['db_active_name="%s"' % map_id]
@@ -78,7 +78,7 @@ def create_map_database(map_id):
                 date.month, date.day, date.hour, date.minute, date.second, map_id))
     # start map creation shell script
     with open(log_file,"wb") as out:
-        map_creation_process= Popen(
+        map_creation_process = Popen(
                 [Config().paths.get("shell_create_map_database")], stdout=out, stderr=STDOUT)
     return_code = map_creation_process.wait()
     # send email
@@ -92,6 +92,34 @@ def create_map_database(map_id):
         email_body = lf.read()
     send_email(email_subject, email_body)
     os.remove(Config().paths.get("shell_lock_file"))
+
+
+def backup_map_database(map_id, backup_folder):
+    print(f"Backup map {map_id} into {backup_folder}")
+    _backup_or_restore_map_database(
+            f"pg_dump -d {map_id} -F c | gzip > \"{backup_folder}/{map_id}.gz\"",
+            f"{map_id}: Backup of database")
+
+def restore_map_database(map_file):
+    print(f"Restore {map_file}")
+    role = Config().database.get("user")
+    _backup_or_restore_map_database(
+            f"gunzip -c -k \"{map_file}\" | pg_restore --no-owner --role {role} -F c -d postgres --create",
+            f"Restoring of {map_file}")
+
+def _backup_or_restore_map_database(command, email_subject_prefix):
+    env_with_db_connection_params = os.environ.copy()
+    env_with_db_connection_params.update(Config().get_database_connection_environment_variables())
+
+    map_process = Popen(
+                command, env=env_with_db_connection_params, shell=True,
+                stdout=PIPE, stderr=STDOUT)
+    stdout, _ = map_process.communicate()
+    return_code = map_process.returncode
+
+    send_email(
+            f"{email_subject_prefix} {'failed' if return_code != 0 else 'successful'}",
+            stdout.decode('utf-8'))
 
 
 def start_webserver():
@@ -138,6 +166,26 @@ def print_version_info():
 
 
 def main():
+
+    # arguments for both create-map-database and backup-map-database
+    def _add_map_selection_args(parser):
+        parser.add_argument(
+                '--all', action='store_true', help='Create all databases listed in the config file')
+        parser.add_argument(
+                'map_ids', nargs='*', help='The map id from config')
+
+    def is_folder(folder_string):
+        if os.path.isdir(folder_string):
+            return folder_string
+        else:
+            exit(f"Folder {folder_string} does not exist", prefix="")
+
+    def is_file(file_string):
+        if os.path.isfile(file_string):
+            return file_string
+        else:
+            exit(f"File {file_string} does not exist", prefix="")
+
     # load config
     Config()
     # create cli parser
@@ -145,37 +193,64 @@ def main():
     parser.add_argument("-v", "--version", action="version", version=print_version_info())
 
     subparsers = parser.add_subparsers(dest="action")
-    create_database_aliases = ['create', 'cmd']
+
+    # create map database
+    create_database_aliases = ['create', 'create-map']
     create_database = subparsers.add_parser(
             "create-map-database", aliases=create_database_aliases,
             description="Start a script to create a new map database thats already in the config file",
             help="Start a script to create a new map database thats already in the config file")
-    create_database.add_argument(
-            '--all', action='store_true', help='Create all databases listed in the config file')
-    create_database.add_argument(
-            'map_ids', nargs='*', help='The map id from config')
+    _add_map_selection_args(create_database)
+
+    # backup map database
+    backup_database_aliases = ['backup', 'backup-map']
+    backup_database = subparsers.add_parser(
+            "backup-map-database", aliases=backup_database_aliases,
+            description="Backup a map database from the config file",
+            help="Backup a map database from the config file")
+    _add_map_selection_args(backup_database)
+    backup_database.add_argument(
+            '-o', '--backup-folder', type=is_folder, required=True, help='Where to save the database backup file(s)')
+
+    # restore map database
+    restore_database_aliases = ['restore', 'restore-map']
+    restore_database = subparsers.add_parser(
+            "restore-map-database", aliases=restore_database_aliases,
+            description="Restore a map database from a previous backup dump",
+            help="Restore a map database from a previous backup dump")
+    restore_database.add_argument(
+            'map_files', nargs='*', type=is_file, help='Path to the dumped map file in gzip format')
+
     # list maps
-    list_databases_aliases = ['list', 'lmd', 'ls']
+    list_databases_aliases = ['list', 'list-maps', 'ls']
     subparsers.add_parser(
             "list-map-databases", aliases=list_databases_aliases,
             description="List map ids from config file",
             help="List map ids from config file")
+
     # start webserver
-    start_webserver_aliases = ['start']
+    start_webserver_aliases = ['start', 'webserver']
     subparsers.add_parser(
             "start-webserver", aliases=start_webserver_aliases,
             description="Start webserver for client communication",
             help="Start webserver for client communication")
+
     # statistics
     statistics_aliases = ['stats']
     subparsers.add_parser(
             "statistics", aliases=statistics_aliases,
             description="Show usage statistics",
             help="Show usage statistics")
+
     args = parser.parse_args()
 
-    if args.action == "create-map-database" \
-            or args.action in create_database_aliases:
+    # create or backup maps
+    if         args.action == "create-map-database" \
+            or args.action in create_database_aliases \
+            or args.action == "backup-map-database" \
+            or args.action in backup_database_aliases:
+
+        # parse map ids
         if not args.map_ids:
             if args.all:
                 args.map_ids = list(Config().maps.keys())
@@ -186,18 +261,31 @@ def main():
             if map_id not in Config().maps.keys():
                 exit("Map id {} not found in config file.\nAvailable maps: {}".format(
                         map_id, list_map_ids()), prefix="Map Creation failed\n")
-        # create maps
-        for map_id in args.map_ids:
-            create_map_database(map_id)
-            time.sleep(60)
 
-    elif args.action == "list-map-databases" \
+        # do something with the maps
+        for map_id in args.map_ids:
+            if         args.action == "create-map-database" \
+                    or args.action in create_database_aliases:
+                create_map_database(map_id)
+            else:
+                backup_map_database(map_id, args.backup_folder)
+            time.sleep(10)
+
+    elif       args.action == "restore-map-database" \
+            or args.action in restore_database_aliases:
+        for map_file in args.map_files:
+            restore_map_database(map_file)
+            time.sleep(10)
+
+    elif       args.action == "list-map-databases" \
             or args.action in list_databases_aliases:
         print(list_map_ids())
-    elif args.action == "start-webserver" \
+
+    elif       args.action == "start-webserver" \
             or args.action in start_webserver_aliases:
         start_webserver()
-    elif args.action == "statistics" \
+
+    elif       args.action == "statistics" \
             or args.action in statistics_aliases:
         show_statistics()
 

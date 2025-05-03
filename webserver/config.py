@@ -414,6 +414,13 @@ class Config:
             else:
                 exit("Invalid value for %s parameter\nPossible values: yes, no" % name)
 
+        def get_database_connection_environment_variables(self):
+            return {
+                    "PGHOST"        : self.database.get("host_name"),
+                    "PGPORT"        : str(self.database.get("port")),
+                    "PGUSER"        : self.database.get("user"),
+                    "PGPASSWORD"    : self.database.get("password")
+                   }
 
         # session id management functions
         def add_session_id(self, id):
