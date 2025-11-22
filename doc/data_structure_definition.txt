@@ -110,6 +110,8 @@ Poi:                            extends from point_with_address_data
 + phone:                        String
 + opening_hours:                String
 + website:                      String
++ level:                        String          Floor level of shops but also elevators
++ post_office_partner:          String          Special attribute for shops which also offer postal services
 
 station:                        extends from poi
 * type:                         "station"

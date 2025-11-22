@@ -3,6 +3,23 @@ Change Log
 
 
 
+v1.6.0: 2025-11-22
+------------------
+
+New POI categories: 
+- accommodation: Hotels and other accommodations extracted from the tourism category
+- sport: Sports facilities and other outdoor leisure activities extracted from the entertainment category
+- sanitary: Toiletts and showers
+- elevator
+
+Other changes:
+- Added the post offices to the POI category "post_box"
+- Added the level attribute to POI
+- Search for POI with exact phrases like "House K"
+- Added Actions to backup and restore databases
+
+
+
 v1.5.3: 2024-11-28
 ------------------
 

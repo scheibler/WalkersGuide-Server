@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import logging, math, time
+import logging, math, re, time
 from psycopg2 import sql
 
 from . import constants, geometry, statistics
@@ -155,8 +155,7 @@ class POI:
         # add escaped search string
         if search:
             if isinstance(search, str):
-                where_clause_param_dict['search_term'] = '%{}%'.format(
-                        search.replace(" ", "%").lower())
+                where_clause_param_dict['search_term'] = self.replace_spaces_except_quoted(search)
             else:
                 raise WebserverException(
                         ReturnCode.BAD_REQUEST, "Invalid search")
@@ -176,7 +175,7 @@ class POI:
                 where_clause_query_list.append(
                         sql.SQL(
                             """
-                            LOWER(name) LIKE {p_search_term}
+                            name ~* {p_search_term}
                             """
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
@@ -299,6 +298,9 @@ class POI:
                                 """
                                    tags->'railway' = 'station'
                                 OR tags->'railway' = 'halt'
+                                OR (tags->'public_transport' = ANY('{"platform", "stop_position"}')
+                                    AND (tags ? 'ref' or tags ? 'local_ref')
+                                    AND (tags->'train' = 'yes' OR tags->'subway' = 'yes' OR tags->'monorail' = 'yes'))
                                 """))
                 if t in ["transportation_class_1", "transport_bus_tram"]:
                     tag_query_list.append(
@@ -320,7 +322,7 @@ class POI:
                                     AND (tags->'ferry' = 'yes' OR tags->'amenity' = 'ferry_terminal'))
                                 OR (tags->'amenity' = 'ferry_terminal' AND NOT tags ? 'public_transport')
                                 or (tags->'public_transport' = ANY('{"stop_position", "station"}')
-                                    AND (tags->'aerialway' = 'yes' AND tags->'aerialway' = 'station'))
+                                    AND (tags->'aerialway' = 'yes' OR tags->'aerialway' = 'station'))
                                 OR (tags->'aerialway' = 'station' AND NOT tags ? 'public_transport')
                                 """))
             # add to where clause
@@ -332,7 +334,7 @@ class POI:
                 where_clause_query_list.append(
                         sql.SQL(
                             """
-                            LOWER(tags->'name') LIKE {p_search_term}
+                            tags->'name' ~* {p_search_term}
                             """
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
@@ -410,9 +412,9 @@ class POI:
         # poi
         #####
         poi_tag_list = ["transport_airport_ferry_aerialway", "transport_taxi",
-                "food", "entertainment", "tourism", "finance", "shop",
-                "health", "education", "public_service", "other_service", "all_buildings_with_name",
-                "post_box", "surveillance", "bench", "trash", "bridge"]
+                "food", "accommodation", "entertainment", "tourism", "finance", "shop", "education",
+                "health", "elevator", "sanitary", "public_service", "other_service", "all_buildings_with_name",
+                "post_box", "surveillance", "bench", "trash", "bridge", "sport"]
         if [True for tag in tag_list if tag in poi_tag_list]:
             t1 = time.time()
             where_clause_query_list = [boundary_box_query]
@@ -426,6 +428,7 @@ class POI:
                                 """
                                 tags->'aeroway' = ANY(
                                     '{"aerodrome", "gate", "terminal"}')
+                                or tags->'amenity' = ANY('{"check_in", "lounge"}')
                                 """))
                 if t == "transport_taxi":
                     tag_query_list.append(
@@ -438,9 +441,9 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"cafe", "canteen", "bbq", "fast_food", "kitchen",
-                                    "food_court", "restaurant", "hookah_lounge", "bar",
-                                    "pub", "drinking_water", "biergarten", "ice_cream"}')
+                                    '{"cafe", "canteen", "bbq", "fast_food",
+                                    "food_court", "restaurant", "pub", "drinking_water",
+                                    "water_point", "biergarten", "ice_cream"}')
                                 """))
                 if t == "entertainment":
                     tag_query_list.append(
@@ -448,34 +451,60 @@ class POI:
                                 """
                                 tags->'amenity' = ANY(
                                     '{"arts_centre", "Brothel", "Casino", "gambling",
-                                    "Cinema", "community_centre", "bar", "pub", "fountain",
-                                    "planetarium", "social_centre", "social_club", "nightclub",
-                                    "stripclub", "studio", "swingerclub", "theatre",
-                                    "youth_centre", "events_venue", "conference_centre",
-                                    "love_hotel", "public_bookcase"}')
+                                      "Cinema", "community_centre", "bar", "pub",
+                                      "planetarium", "social_centre", "social_club", "nightclub",
+                                      "stripclub", "studio", "swingerclub", "theatre",
+                                      "youth_centre", "events_venue", "conference_centre",
+                                      "love_hotel", "public_bookcase", "music_venue", "stage"}')
                                 OR tags ? 'club'
-                                OR tags ? 'leisure'
+                                OR tags ? 'attraction'
+                                or tags->'leisure' = ANY(
+                                    '{"adult_gaming_centre", "amusement_arcade", "dance",
+                                      "escape_game", "hackerspace", "stadium", "tanning_salon", ""}')
                                 OR tags->'tourism' = 'museum'
+                                """))
+                if t == "sport":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'leisure' = ANY(
+                                  '{"bathing_place", "bowling_alley", "dog_park", "fishing",
+                                    "fitness_centre", "fitness_station", "golf_course",
+                                    "high_ropes_course", "horse_riding", "ice_rink",
+                                    "miniature_golf", "park", "pitch", "playground", "sauna",
+                                    "sports_centre", "sports_hall", "stadion", "sunbathing",
+                                    "swimming_area", "swimming_pool", "trampoline_park", "water_park"}')
+                                """))
+                if t == "accommodation":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'tourism' = ANY(
+                                    '{"alpine_hut", "apartment", "camp_site", "caravan_site", "chalet",
+                                      "guest_house", "hostel", "hotel", "motel", "wilderness_hut"}')
                                 """))
                 if t == "tourism":
                     tag_query_list.append(
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"bbq", "crypt", "place_of_worship", "shelter",
-                                    "hunting_stand", "kitchen", "toilets"}')
-                                OR tags->'natural' = ANY(
-                                    '{"glacier", "hot_spring", "spring", "volcano",
-                                    "peak", "cave_entrance", "rock", "stone"}')
-                                OR tags->'man_made' = ANY(
-                                    '{"adit", "beacon", "communications_tower", "crane",
-                                    "cross", "flagpole", "gasometer", "lighthouse",
-                                    "mineshaft", "nesting_site", "obelisk", "observatory",
-                                    "stupa", "telescope", "tower", "watermill",
-                                    "water_tap", "water_well", "windmill"}')
-                                or (tags ? 'natural' and tags ? 'name')
-                                OR tags ? 'tourism'
+                                    '{"bbq", "crypt", "lounge", "place_of_worship", "shelter",
+                                      "fountain", "hunting_stand", "kitchen", "ranger_station"}')
                                 OR tags ? 'historic'
+                                or tags->'leisure' = ANY(
+                                  '{"bathing_place", "firepit", "garden", "nature_reserve", "park",
+                                    "picnic_table", "resort", "sunbathing", "swimming_pool"}')
+                                OR tags->'man_made' = ANY(
+                                    '{"cairn", "cross", "flagpole", "lighthouse",
+                                    "maypole", "obelisk", "observatory", "stupa",
+                                    "telescope", "tower", "watermill", "water_tap", "windmill"}')
+                                OR tags->'natural' = ANY(
+                                    '{"glacier", "hot_spring", "spring", "volcano", "peak", "cave_entrance"}')
+                                or (tags ? 'natural' and tags ? 'name')
+                                or tags->'tourism' = ANY(
+                                    '{"alpine_hut", "aquarium", "artwork", "attraction",
+                                      "gallery", "information", "museum", "picnic_site",
+                                      "theme_park", "viewpoint", "wilderness_hut", "zoo"}')
                                 """))
                 if t == "finance":
                     tag_query_list.append(
@@ -490,11 +519,19 @@ class POI:
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"bicycle_rental", "boat_rental", "boat_sharing",
-                                    "car_rental", "car_sharing", "fuel", "marketplace",
-                                    "shop", "shopping", "pharmacy", "Supermarket",
-                                    "post_office", "vending_machine", "veterinary"}')
+                                    '{"fuel", "marketplace", "shop", "shopping", "pharmacy", "Supermarket", "vending_machine"}')
                                 OR (tags ? 'shop' and tags->'shop' != 'vacant')
+                                """))
+                if t == "education":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"school", "college", "university", "library",
+                                      "training", "research_institute", "kindergarten",
+                                      "Dormitory", "auditorium", "childcare", "preschool",
+                                      "toy_library", "language_school", "dancing_school",
+                                      "music_school", "conference_centre"}')
                                 """))
                 if t == "health":
                     tag_query_list.append(
@@ -503,57 +540,24 @@ class POI:
                                 tags->'amenity' = ANY(
                                     '{"pharmacy", "doctors", "dentist", "hospital", "health_centre",
                                     "baby_hatch", "clinic", "nursing_home", "social_facility", "public_bath",
-                                    "retirement_home", "sauna", "shower", "toilets", "veterinary"}')
+                                    "retirement_home", "sauna", "veterinary"}')
                                 OR tags ? 'healthcare'
                                 or tags->'office' = 'therapist'
                                 """))
-                if t == "education":
+                if t == "elevator":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                     tags->'highway' = 'elevator'
+                                AND (NOT tags ? 'access' or tags->'access' != 'no')
+                                AND (NOT tags ? 'goods'  or tags->'goods' != 'designated')
+                                """))
+                if t == "sanitary":
                     tag_query_list.append(
                             sql.SQL(
                                 """
                                 tags->'amenity' = ANY(
-                                    '{"school", "college", "university", "library", "training",
-                                    "kindergarten", "Dormitory", "auditorium", "childcare",
-                                    "preschool", "language_school", "music_school"}')
-                                """))
-                if t == "public_service":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                tags->'amenity' = ANY(
-                                    '{"townhall", "embassy", "courthouse",
-                                    "police", "prison", "fire_station", "register_office",
-                                    "grave_yard", "crematorium", "village_hall",
-                                    "post_office", "ranger_station",
-                                    "funeral_hall", "waste_transfer_station"}')
-                                OR tags->'office' = 'government'
-                                """))
-                if t == "other_service":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                tags->'amenity' = 'post_office'
-                                or tags ? 'craft'
-                                OR tags ? 'office'
-                                """))
-                if t == "post_box":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                tags->'amenity' = 'post_box'
-                                """))
-                if t == "all_buildings_with_name":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                   (tags ? 'building' AND tags ? 'name')
-                                or (tags->'amenity' = 'public_building' AND tags ? 'name')
-                                """))
-                if t == "surveillance":
-                    tag_query_list.append(
-                            sql.SQL(
-                                """
-                                tags->'man_made' = 'surveillance'
+                                    '{"toilets", "sauna", "shower", "public_bath"}')
                                 """))
                 if t == "bench":
                     tag_query_list.append(
@@ -569,6 +573,48 @@ class POI:
                                 tags->'amenity' = ANY(
                                     '{"recycling", "waste_basket", "waste_disposal",
                                     "sanitary_dump_station", "dog_toilet", "waste_transfer_station"}')
+                                """))
+                if t == "public_service":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"townhall", "embassy", "courthouse", "village_hall",
+                                    "police", "prison", "fire_station", "register_office",
+                                    "grave_yard", "crematorium", "refugee_site",
+                                    "ranger_station", "funeral_hall", "waste_transfer_station"}')
+                                OR tags->'office' = 'government'
+                                """))
+                if t == "other_service":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"bicycle_rental", "boat_rental", "boat_sharing",
+                                    "car_rental", "car_sharing", "internet_cafe", "post_office", "veterinary"}')
+                                or tags ? 'craft'
+                                OR tags ? 'office'
+                                """))
+                if t == "post_box":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'amenity' = ANY(
+                                    '{"post_box", "post_office", "mailroom", "parcel_locker"}')
+                                or tags ? 'post_office'
+                                """))
+                if t == "all_buildings_with_name":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                   (tags ? 'building' AND tags ? 'name')
+                                or (tags->'amenity' = 'public_building' AND tags ? 'name')
+                                """))
+                if t == "surveillance":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'man_made' = 'surveillance'
                                 """))
                 if t == "bridge":
                     tag_query_list.append(
@@ -586,11 +632,11 @@ class POI:
                 where_clause_query_list.append(
                         sql.SQL(
                             """
-                            (  LOWER(tags->'name') LIKE {p_search_term}
-                            OR LOWER(tags->'amenity') LIKE {p_search_term}
-                            OR LOWER(tags->'cuisine') LIKE {p_search_term}
-                            OR LOWER(tags->'addr:street') LIKE {p_search_term}
-                            OR LOWER(tags->'street') LIKE {p_search_term})
+                            EXISTS(
+                                SELECT 1 FROM unnest(
+                                    ARRAY['amenity', 'craft', 'cuisine', 'healthcare', 'leisure', 'name', 'office', 'shop', 'tourism'])
+                                AS search_key
+                                WHERE tags->search_key IS NOT NULL AND tags->search_key ~* {p_search_term})
                             """
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
@@ -641,7 +687,7 @@ class POI:
                 where_clause_query_list.append(
                         sql.SQL(
                             """
-                            LOWER(label) LIKE {p_search_term}
+                            label ~* {p_search_term}
                             """
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
@@ -695,7 +741,7 @@ class POI:
                 where_clause_query_list.append(
                         sql.SQL(
                             """
-                            LOWER(crossing_street_name) LIKE {p_search_term}
+                            crossing_street_name ~* {p_search_term}
                             """
                             ).format(
                                     p_search_term=sql.Placeholder(name='search_term'))
@@ -1421,6 +1467,8 @@ class POI:
             poi['sub_type'] = self.translator.translate("shop", tags['shop'])
         elif "aeroway" in tags:
             poi['sub_type'] = self.translator.translate("aeroway", tags['aeroway'])
+        elif "highway" in tags and tags['highway'] == "elevator":
+            poi['sub_type'] = self.translator.translate("highway", "elevator")
         elif "building" in tags:
             if tags['building'] == "yes":
                 poi['sub_type'] = self.translator.translate("building", "building")
@@ -1444,7 +1492,7 @@ class POI:
         else:
             poi['name'] = poi['sub_type']
 
-        # contact
+        # contact and opening hours
         if "contact:website" in tags:
             poi['website'] = tags['contact:website']
         elif "website" in tags:
@@ -1459,6 +1507,21 @@ class POI:
             poi['phone'] = tags['phone']
         if "opening_hours" in tags:
             poi['opening_hours'] = tags['opening_hours']
+
+        # for post office=post_partner only
+        if "post_office" in tags and tags['post_office'] == "post_partner":
+            if "post_office:brand" in tags:
+                poi['post_office_partner'] = tags['post_office:brand']
+            elif "post_office:service_provider" in tags:
+                poi['post_office_partner'] = tags['post_office:service_provider']
+            elif "post_office:operator" in tags:
+                poi['post_office_partner'] = tags['post_office:operator']
+            else:
+                poi['post_office_partner'] = self.translator.translate("post", "post_office_partner_unknown")
+
+        # level / floor
+        if "level" in tags:
+            poi['level'] = tags['level']
 
         # outer building
         poi['is_inside'] = {}
@@ -1590,6 +1653,10 @@ class POI:
         # additional optional attributes
         if "local_ref" in tags:
             station['local_ref'] = tags['local_ref']
+        elif "ref" in tags:
+            station['local_ref'] = tags['ref']
+        if "layer" in tags:
+            station['layer'] = tags['layer']
         if "network" in tags:
             station['network'] = tags['network']
         if "operator" in tags:
@@ -1691,6 +1758,41 @@ class POI:
                 hstore.update(changes)
 
         return hstore
+
+
+    def replace_spaces_except_quoted(self, text):
+        """
+        Replace spaces with % except when spaces are within properly delimited quoted strings.
+        Uses a simple approach without problematic lookbehind/lookahead.
+        """
+        # First, find and temporarily replace properly quoted strings
+        quoted_pattern = r'(^|[\s])"([^"]*)"(?=[\s]|$)'
+
+        # Store quoted strings with placeholders
+        quoted_strings = {}
+        placeholder_counter = 0
+
+        def store_quoted(match):
+            nonlocal placeholder_counter
+            placeholder = f"__PLACEHOLDER_{placeholder_counter}__"
+            # Keep the leading space/start and add placeholder
+            quoted_strings[placeholder] = match.group(0) \
+                    .replace('"', '(^|\\W)', 1) \
+                    .replace('"', '(\\W|$)', 1)
+            placeholder_counter += 1
+            return match.group(1) + placeholder
+
+        # Replace quoted strings with placeholders
+        temp_text = re.sub(quoted_pattern, store_quoted, text)
+
+        # Replace all spaces with .*
+        temp_text = re.sub(r'\s+', '.*', temp_text)
+
+        # Restore the quoted strings
+        for placeholder, original in quoted_strings.items():
+            temp_text = temp_text.replace(placeholder, original.strip())
+
+        return temp_text
 
 
     def extract_address(self, tags):

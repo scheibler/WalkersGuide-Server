@@ -137,7 +137,8 @@ building= and name= or place= and name= or \
 amenity= or shop= or tourism= or leisure= or office= or craft= or natural= or \
 historic= or man_made= or bridge= or healthcare= or club= or \
 public_transport=stop_position =station or aeroway=terminal =aerodrom =helipad or aerialway=station or \
-highway=bus_stop =crossing =traffic_signals or railway=halt =station =tram_stop =crossing"
+highway=bus_stop =crossing =traffic_signals or railway=halt =station =stop =tram_stop =crossing"
+filter_nodes="highway=elevator"
 
 # ways
 osmfilter "$o5m_osm_file" --keep-nodes= --keep-ways="$filter" --keep-relations= \
@@ -148,7 +149,7 @@ rm nodes.txt relation_members.txt relations.txt users.txt way_nodes.txt
 
 # nodes and relations
 osmfilter "$o5m_osm_file" --ignore-dependencies \
-    --keep-nodes="$filter" --keep-ways= --keep-relations="$filter" \
+    --keep-nodes="$filter or $filter_nodes" --keep-ways= --keep-relations="$filter" \
 | osmosis --read-xml file=- \
     --write-pgsql-dump directory="$poi_temp_subfolder"
 mv nodes.txt poi_nodes.txt

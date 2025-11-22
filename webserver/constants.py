@@ -8,13 +8,15 @@ max_distance_between_start_and_destination_in_meters = 30000
 supported_route_point_object_list = ["point", "entrance", "gps", "intersection", "pedestrian_crossing", "poi", "station", "street_address"]
 supported_way_class_list = ["big_streets", "small_streets", "paved_ways", "unpaved_ways", "unclassified_ways", "steps"]
 # poi constants
-supported_poi_category_listp = ["transport_bus_tram", "transport_train_lightrail_subway",
-        "transport_airport_ferry_aerialway", "transport_taxi", "food", "entertainment",
-        "finance", "shop", "health", "education", "public_service", "other_service",
-        "tourism", "all_buildings_with_name", "entrance", "entrance_without_name",
-        "post_box", "surveillance", "bench", "trash", "bridge", "pedestrian_crossings",
-        "named_intersection", "partially_named_intersection", "other_intersection",
-        "railway_intersection"]
+supported_poi_category_listp = [
+        "transport_bus_tram", "transport_train_lightrail_subway",
+        "transport_airport_ferry_aerialway", "transport_taxi",
+        "food", "accommodation", "tourism", "entertainment", "finance", "post_box", "shop", "education",
+        "sport", "health", "public_service", "other_service",
+        "elevator", "sanitary", "bench", "trash", "surveillance",
+        "all_buildings_with_name", "entrance", "entrance_without_name",
+        "pedestrian_crossings", "named_intersection", "partially_named_intersection",
+        "other_intersection", "railway_intersection", "bridge"]
 
 # webserver return codes
 class ReturnCode:

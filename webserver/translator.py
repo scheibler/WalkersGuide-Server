@@ -326,6 +326,7 @@ class Translator:
             if tag == "crossing": return "Querung"
             if tag == "roundabout": return "Kreisverkehr"
             if tag == "traffic_signals": return "Ampelkreuzung"
+            if tag == "elevator": return "Aufzug"
 
         if category == "railway":
             if tag == "abandoned": return "aufgelassene Bahnstrecke"
@@ -591,6 +592,9 @@ class Translator:
             if tag == "travel_agency": return "Reisebüro"
             if tag == "video": return "Videothek"
             if tag == "wine": return "Weingeschäft"
+
+        if category == "post":
+            if tag == "post_office_partner_unknown": return "Betreiber ist unbekannt"
 
         if category == "tourism":
             if tag == "alpine_hut": return "Berghütte"
@@ -957,6 +961,7 @@ class Translator:
             if tag == "crossing": return "Перехрестя"
             if tag == "roundabout": return "Круговий рух"
             if tag == "traffic_signals": return "Світлофор"
+            if tag == "elevator": return "ліфт"
 
         if category == "railway":
             if tag == "abandoned": return "Занедбана залізниця"
@@ -1223,6 +1228,9 @@ class Translator:
             if tag == "travel_agency": return "Туристичне агентство"
             if tag == "video": return "Відеомагазин"
             if tag == "wine": return "Винний магазин"
+
+        if category == "post":
+            if tag == "post_office_partner_unknown": return "Оператор невідомий"
 
         if category == "tourism":
             if tag == "alpine_hut": return "Альпійська хижа"
@@ -1589,6 +1597,7 @@ class Translator:
             if tag == "crossing": return "crossing"
             if tag == "roundabout": return "Roundabout"
             if tag == "traffic_signals": return "Traffic light intersection"
+            if tag == "elevator": return "elevator"
 
         if category == "railway":
             if tag == "abandoned": return "Abandoned Railway"
@@ -1855,6 +1864,9 @@ class Translator:
             if tag == "travel_agency": return "Travel Agency"
             if tag == "video": return "Video Shop"
             if tag == "wine": return "Off License"
+
+        if category == "post":
+            if tag == "post_office_partner_unknown": return "Operator is unknown"
 
         if category == "tourism":
             if tag == "alpine_hut": return "Alpine Hut"
