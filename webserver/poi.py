@@ -103,6 +103,8 @@ class POI:
         poi_list = []
 
         # sql queries
+        access_exclude_private = sql.SQL(
+                "(NOT tags ? 'access' OR NOT tags->'access' = 'private')")
         # boundary box
         boundary_box_query, boundary_box_query_params = self.get_boundary_box_query_and_params(lat, lon, radius)
         # order_by
@@ -168,7 +170,8 @@ class POI:
                                  "other_intersection", "railway_intersection"]
         if [True for tag in tag_list if tag in intersection_tag_list]:
             t1 = time.time()
-            where_clause_query_list = [boundary_box_query]
+            where_clause_query_list = \
+                    [ boundary_box_query, access_exclude_private ]
 
             # search
             if search:
@@ -287,7 +290,8 @@ class POI:
                 "transport_bus_tram", "transport_train_lightrail_subway", "transport_airport_ferry_aerialway"]
         if [True for tag in tag_list if tag in station_tag_list]:
             t1 = time.time()
-            where_clause_query_list = [boundary_box_query]
+            where_clause_query_list = \
+                    [ boundary_box_query, access_exclude_private ]
 
             # tags
             tag_query_list = []
@@ -417,7 +421,8 @@ class POI:
                 "post_box", "surveillance", "bench", "trash", "bridge", "sport"]
         if [True for tag in tag_list if tag in poi_tag_list]:
             t1 = time.time()
-            where_clause_query_list = [boundary_box_query]
+            where_clause_query_list = \
+                    [ boundary_box_query, access_exclude_private ]
 
             # tags
             tag_query_list = []
@@ -680,7 +685,8 @@ class POI:
         entrance_tag_list = [ "entrance", "entrance_without_name" ]
         if [True for tag in tag_list if tag in entrance_tag_list]:
             t1 = time.time()
-            where_clause_query_list = [boundary_box_query]
+            where_clause_query_list = \
+                    [ boundary_box_query, access_exclude_private ]
 
             # search
             if search:
@@ -734,7 +740,8 @@ class POI:
         ######################
         if "pedestrian_crossings" in tag_list:
             t1 = time.time()
-            where_clause_query_list = [boundary_box_query]
+            where_clause_query_list = \
+                    [ boundary_box_query, access_exclude_private ]
 
             # search
             if search:
@@ -991,6 +998,8 @@ class POI:
         # optional attributes
         if osm_node_id > 0:
             point['node_id'] = osm_node_id
+        if "access" in tags and tags['access'] != "yes":
+            point['access'] = tags['access']
         if "ele" in tags:
             point['ele'] = tags['ele']
         if "tactile_paving" in tags:

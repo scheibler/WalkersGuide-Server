@@ -48,6 +48,10 @@ Point:
 + alt_name          String
 + old_name          String
 + note              String
++ access:           String          access attribute from osm database
+                                    Values: no, customer, agricultural, forestry, delivery, permissive, permit, other
+                                    The value "private" is filtered by the get_poi function
+                                    If the access attribute is missing then access is permitted
 + wikidata:         String
 + turn:             Integer         turn in degree (only for routes)
                     [0 <= turn <= 359, default: unknown = -1]

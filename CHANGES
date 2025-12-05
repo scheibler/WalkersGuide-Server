@@ -3,6 +3,14 @@ Change Log
 
 
 
+v1.6.1: 2025-12-05
+------------------
+
+- Add access attribute to POI data structure
+- Exclude poi with attribute access=private
+
+
+
 v1.6.0: 2025-11-22
 ------------------
 
