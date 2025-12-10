@@ -1662,7 +1662,10 @@ class POI:
         # additional optional attributes
         if "local_ref" in tags:
             station['local_ref'] = tags['local_ref']
-        elif "ref" in tags:
+        elif "ref" in tags and len(tags['ref']) < 3:
+            # platform number should be placed in local_ref above
+            # but sometimes it's placed within the ref attribute instead
+            # but to filter out station or operator ref ids the potential platform number must be shorter than 3 characters
             station['local_ref'] = tags['ref']
         if "layer" in tags:
             station['layer'] = tags['layer']
