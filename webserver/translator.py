@@ -1348,9 +1348,9 @@ class Translator:
             if tag == "database_error": return "Error al acceder a la base de datos"
             if tag == "no_route_options": return "No se han transmitido opciones de ruta"
             if tag == "no_route_factor_option": return "Falta el factor para el cálculo del desvío de ruta"
-            if tag == "no_session_id_option": return "Falta el identificador de sesión"
-            if tag == "old_request_still_running": return "El servidor aún está procesando tu solicitud anterior. Por favor, espera al menos 3 minutos."
-            if tag == "server_busy": return "Actualmente el servidor está ocupado. Por favor, inténtalo de nuevo más tarde."
+            if tag == "no_session_id_option": return "Falta el id de sesión"
+            if tag == "old_request_still_running": return "El servidor aún está procesando su solicitud anterior. Por favor, espere al menos 3 minutos."
+            if tag == "server_busy": return "El servidor está ocupado. Por favor, inténtelo de nuevo más tarde."
             if tag == "no_source_route": return "No se ha transmitido ninguna ruta"
             if tag == "source_route_incomplete": return "La consulta de ruta transmitida está incompleta"
             if tag == "no_start_point": return "No se ha transmitido el punto de inicio"
@@ -1359,13 +1359,13 @@ class Translator:
             if tag == "start_point_no_longitude": return "Falta la longitud del punto de inicio"
             if tag == "start_point_no_type": return "Falta el tipo del punto de inicio"
             if tag == "no_way_id": return "No se ha transmitido el Way-Id"
-            if tag == "no_node_id": return "No se ha transmitido el identificador de nodo"
-            if tag == "no_next_node_id": return "No se ha transmitido el identificador del siguiente nodo"
-            if tag == "node_id_invalid": return "El identificador de punto de paso transmitido no es válido"
+            if tag == "no_node_id": return "No se ha transmitido el id de nodo"
+            if tag == "no_next_node_id": return "No se ha transmitido el id del siguiente nodo"
+            if tag == "node_id_invalid": return "El id de Waypoint transmitido no es válido"
             if tag == "way_id_invalid": return "El Way-Id transmitido no es válido"
             if tag == "source_route_no_transport_parts": return "La ruta carece de un segmento de transporte público"
             if tag == "source_route_multiple_transport_parts": return "La ruta contiene varios segmentos de transporte público"
-            if tag == "no_address_string": return "No se ha transmitido ninguna dirección"
+            if tag == "no_address_string": return "No se ha transmitido texto de dirección"
             if tag == "address_invalid": return "No se encontraron coordenadas para la dirección indicada"
             if tag == "no_latitude_value": return "Falta el valor de latitud"
             if tag == "no_longitude_value": return "Falta el valor de longitud"
@@ -1374,7 +1374,7 @@ class Translator:
             if tag == "no_public_transport_provider": return "Falta el proveedor de transporte público"
             if tag == "no_address_for_this_coordinates": return "No se encontró ninguna dirección para las coordenadas indicadas"
             if tag == "no_station_for_this_coordinates": return "No se encontró ninguna estación para estas coordenadas"
-            if tag == "bahn_server_down": return "El servidor de Deutsche Bahn no está accesible"
+            if tag == "bahn_server_down": return "No se ha podido acceder al servidor de Deutsche Bahn"
             if tag == "no_bug_report_file_name": return "Falta el nombre del archivo de reporte de errores"
             if tag == "no_bug_report_contents": return "El contenido del reporte de errores está vacío"
             if tag == "process_canceled": return "Proceso cancelado"
@@ -1383,7 +1383,7 @@ class Translator:
             if tag == "address": return "Dirección"
             if tag == "hiking_trail": return "Sendero"
             if tag == "way_point": return "Punto de referencia"
-            if tag == "way_segment": return "Segmento de camino"
+            if tag == "way_segment": return "Segmento de vía"
 
         # everything related to routing and public transport
 
@@ -1445,13 +1445,13 @@ class Translator:
             if tag == "yes": return "Puente"
 
         if category == "crossing":
-            if tag == "traffic_signals": return "con semáforo"
+            if tag == "traffic_signals": return "con semáforos"
             if tag == "zebra": return "paso de cebra"
             if tag == "uncontrolled": return "sin regular"
             if tag == "unmarked": return "sin marcar"
 
         if category == "highway":
-            if tag == "bridleway": return "Camino de herradura"
+            if tag == "bridleway": return "Vía verde"
             if tag == "bus_guideway": return "Carril bus guiado"
             if tag == "bus_stop": return "Parada de autobús"
             if tag == "byway": return "Camino secundario"
@@ -1497,16 +1497,16 @@ class Translator:
             if tag == "elevator": return "ascensor"
 
         if category == "railway":
-            if tag == "abandoned": return "Vía férrea abandonada"
+            if tag == "abandoned": return "Ferrocarril abandonado"
             if tag == "construction": return "Ferrocarril en construcción"
-            if tag == "disused": return "Vía férrea en desuso"
+            if tag == "disused": return "Ferrocarril en desuso"
             if tag == "disused_station": return "Estación de tren en desuso"
             if tag == "funicular": return "Funicular"
             if tag == "halt": return "Apeadero"
             if tag == "historic_station": return "Estación histórica"
-            if tag == "junction": return "Nudo ferroviario"
+            if tag == "junction": return "Cruce ferroviario"
             if tag == "light_rail": return "Tren ligero"
-            if tag == "miniature": return "Tren en miniatura"
+            if tag == "miniature": return "Ferrocarril en miniatura"
             if tag == "monorail": return "Monorraíl"
             if tag == "narrow_gauge": return "Ferrocarril de vía estrecha"
             if tag == "platform": return "Andén"
@@ -1519,7 +1519,7 @@ class Translator:
             if tag == "switch": return "Agujas"
             if tag == "tram": return "Tranvía"
             if tag == "tram_stop": return "Parada de tranvía"
-            if tag == "yard": return "Patio de maniobras"
+            if tag == "yard": return "Playa de maniobras"
             if tag in ["crossing", "level_crossing"]: return "Paso a nivel"
 
         if category == "aeroway":
@@ -1534,7 +1534,7 @@ class Translator:
             if tag == "subway": return "Estación de metro"
             if tag == "ferry": return "Estación de ferry"
             if tag == "aerialway": return "Estación de teleférico"
-            if tag == "unknown": return "Parada"
+            if tag == "unknown": return "Estación"
 
         # next translations are for poi and come from osm wiki
 
@@ -1551,7 +1551,7 @@ class Translator:
             if tag == "bicycle_parking": return "Aparcamiento de bicicletas"
             if tag == "bicycle_rental": return "Alquiler de bicicletas"
             if tag == "brothel": return "Burdel"
-            if tag == "bureau_de_change": return "Casa de cambio"
+            if tag == "bureau_de_change": return "Cambio de divisa"
             if tag == "bus_station": return "Estación de autobuses"
             if tag == "cafe": return "Cafetería"
             if tag == "car_rental": return "Alquiler de coches"
@@ -1700,7 +1700,7 @@ class Translator:
             if tag == "toy_library": return "Ludoteca"
             if tag == "traffic_park": return "Parque de tráfico"
             if tag == "training": return "Entrenamiento"
-            if tag == "vehicle_inspection": return "Inspección de vehículos"
+            if tag == "vehicle_inspection": return "ITV"
             if tag == "waste_disposal": return "Contenedor de basura"
             if tag == "waste_transfer_station": return "Estación de transferencia"
             if tag == "water_point": return "Punto de agua"
@@ -1708,7 +1708,7 @@ class Translator:
             if tag == "weighbridge": return "Báscula de vehículos"
 
         if category == "barrier":
-            if tag == "stile": return "Paso de valla"
+            if tag == "stile": return "Paso de madera"
 
         if category == "building":
             if tag == "apartments": return "Bloque de apartamentos"
@@ -2152,7 +2152,7 @@ class Translator:
             if tag == "church": return "Iglesia"
             if tag == "house": return "Casa histórica"
             if tag == "icon": return "Icono"
-            if tag == "manor": return "Casa solariega"
+            if tag == "manor": return "Mansión"
             if tag == "memorial": return "Memorial"
             if tag == "mine": return "Mina histórica"
             if tag == "monument": return "Monumento"
@@ -2160,7 +2160,7 @@ class Translator:
             if tag == "ruins": return "Ruinas"
             if tag == "tower": return "Torre"
             if tag == "wayside_cross": return "Crucero"
-            if tag == "wayside_shrine": return "Humilladero"
+            if tag == "wayside_shrine": return "Ermita"
             if tag == "wreck": return "Pecio"
             if tag == "yes": return "Lugar histórico"
 
@@ -2208,7 +2208,7 @@ class Translator:
             if tag == "bowling_alley": return "Bolera"
             if tag == "common": return "Tierra comunal"
             if tag == "dance": return "Sala de baile"
-            if tag == "disc_golf_course": return "Campo de disc golf"
+            if tag == "disc_golf_course": return "Campo de golf de disco"
             if tag == "dog_park": return "Parque canino"
             if tag == "escape_game": return "Escape room"
             if tag == "firepit": return "Hoguera"
@@ -2229,7 +2229,7 @@ class Translator:
             if tag == "playground": return "Parque infantil"
             if tag == "recreation_ground": return "Zona de recreo"
             if tag == "sauna": return "Sauna"
-            if tag == "slipway": return "Rampa de botadura"
+            if tag == "slipway": return "Rampa"
             if tag == "sports_centre": return "Centro deportivo"
             if tag == "sports_hall": return "Pabellón deportivo"
             if tag == "stadium": return "Estadio"
@@ -2237,7 +2237,7 @@ class Translator:
             if tag == "swimming_area": return "Zona de baño"
             if tag == "swimming_pool": return "Piscina"
             if tag == "track": return "Pista de atletismo"
-            if tag == "trampoline_park": return "Parque de camas elásticas"
+            if tag == "trampoline_park": return "Camas elásticas"
             if tag == "water_park": return "Parque acuático"
             if tag == "wildlife_hide": return "Observatorio de fauna"
 
@@ -2346,7 +2346,7 @@ class Translator:
             if tag == "forestry": return "Oficina forestal"
             if tag == "foundation": return "Fundación"
             if tag == "geodesist": return "Geodesta"
-            if tag == "gongo": return "ONG gubernamental"
+            if tag == "gongo": return "ONG-Gubernamental"
             if tag == "government": return "Oficina gubernamental"
             if tag == "graphic_design": return "Diseño gráfico"
             if tag == "guide": return "Servicio de guías"
