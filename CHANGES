@@ -3,6 +3,19 @@ Change Log
 
 
 
+v1.7.0: 2026-02-08
+------------------
+
+- Add Spanish translation
+- Add translations for all languages:
+    - For OSM POI tags: amenity, leisure, man_made and sport
+    - For OSM POI tags: craft, club, cuisine, healthcare and office.
+- Add test script to check if translations are complete (uses English as baseline)
+  Useage: ./run test
+- Fix for invalid station platform numbers:
+
+
+
 v1.6.1: 2025-12-05
 ------------------
 

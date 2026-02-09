@@ -1,4 +1,4 @@
-server_version = '1.6.1'
+server_version = '1.7.0'
 supported_api_version_list = [ 3, 4 ]
 supported_map_version_list = [ 2, 3 ]
 supported_language_list = ["en", "de", "es", "uk"]
