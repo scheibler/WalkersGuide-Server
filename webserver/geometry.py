@@ -100,15 +100,14 @@ def get_center_point(lat1, lon1, lat2, lon2):
     return center_point
 
 
-def get_boundary_box_query(table_name=None):
+def get_boundary_box_query(geom_column_name):
     return sql.SQL(
             """
             {c_geom_column_name} && ST_MakeEnvelope(
                     {p_boundaries_left}, {p_boundaries_bottom}, {p_boundaries_right}, {p_boundaries_top})
             """
             ).format(
-                    c_geom_column_name=sql.SQL(
-                        "%s.geom" % table_name if table_name else "geom"),
+                    c_geom_column_name=sql.SQL(geom_column_name),
                     p_boundaries_left=sql.Placeholder(name='boundaries_left'),
                     p_boundaries_bottom=sql.Placeholder(name='boundaries_bottom'),
                     p_boundaries_right=sql.Placeholder(name='boundaries_right'),

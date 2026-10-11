@@ -3,6 +3,18 @@ Change Log
 
 
 
+v1.8.0: 2026-10-11
+------------------
+
+- New poi categories: barrier and stairs_escalators
+- Add gates to poi category entrance_without_name
+- New poi attributes: indoor_seating, outdoor_seating and opening_hours_last_checked
+- Include public transport stations without a name
+- More verbose poi sub_type
+- Format poi level attribute
+
+
+
 v1.7.0: 2026-02-08
 ------------------
 

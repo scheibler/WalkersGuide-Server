@@ -1,4 +1,4 @@
-server_version = '1.7.0'
+server_version = '1.8.0'
 supported_api_version_list = [ 3, 4 ]
 supported_map_version_list = [ 2, 3 ]
 supported_language_list = ["en", "de", "es", "uk"]
@@ -13,9 +13,9 @@ supported_poi_category_listp = [
         "transport_airport_ferry_aerialway", "transport_taxi",
         "food", "accommodation", "tourism", "entertainment", "finance", "post_box", "shop", "education",
         "sport", "health", "public_service", "other_service",
-        "elevator", "sanitary", "bench", "trash", "surveillance",
+        "elevator", "stairs_escalators", "sanitary", "bench", "trash", "surveillance",
         "all_buildings_with_name", "entrance", "entrance_without_name",
-        "pedestrian_crossings", "named_intersection", "partially_named_intersection",
+        "barrier", "pedestrian_crossings", "named_intersection", "partially_named_intersection",
         "other_intersection", "railway_intersection", "bridge"]
 
 # webserver return codes

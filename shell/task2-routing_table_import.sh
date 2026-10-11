@@ -134,6 +134,7 @@ rm ways.txt relation_members.txt relations.txt users.txt way_nodes.txt
 # poi from nodes, ways and relations
 filter="building=apartments =dormitory =hotel =retail =cathedral =chapel =church =civic =hospital =school =university =public or \
 building= and name= or place= and name= or \
+barrier=bar =block =bollard =cattle_grid =chain =cycle_barrier =motorcycle_barrier =planter =entrance =gate =horse_stile =kissing_gate =lift_gate =sliding_beam =sliding_gate =stile =swing_gate =turnstile =full-height_turnstile =wicket_gate or \
 amenity= or shop= or tourism= or leisure= or office= or craft= or natural= or \
 historic= or man_made= or bridge= or healthcare= or club= or \
 public_transport=stop_position =station or aeroway=terminal =aerodrom =helipad or aerialway=station or \

@@ -27,9 +27,12 @@ class POI:
             raise WebserverException(
                     ReturnCode.MAP_OUTDATED, "Hiking trails not available in map version 2")
 
+        self.check_if_lat_lon_lays_within_selected_map_boundaries(lat, lon)
+
         # sql queries
         # boundary box
-        boundary_box_query, boundary_box_query_params = self.get_boundary_box_query_and_params(lat, lon, radius)
+        boundary_box_query, boundary_box_query_params = \
+                self.get_boundary_box_query_and_params(lat, lon, radius)
         # order by
         if order_by == "start":
             order_by_query = sql.SQL("ORDER BY distance_to_start")
@@ -99,18 +102,34 @@ class POI:
 
 
     def get_poi(self, lat, lon, radius, number_of_results, tags, search):
+        self.check_if_lat_lon_lays_within_selected_map_boundaries(lat, lon)
+
         ts = time.time()
         poi_list = []
 
         # sql queries
         access_exclude_private = sql.SQL(
                 "(NOT tags ? 'access' OR NOT tags->'access' = 'private')")
+
         # boundary box
-        boundary_box_query, boundary_box_query_params = self.get_boundary_box_query_and_params(lat, lon, radius)
+        boundary_box_query_geom, boundary_box_query_params = \
+                self.get_boundary_box_query_and_params(lat, lon, radius, "geom")
+        boundary_box_query_linestring, _ = \
+                self.get_boundary_box_query_and_params(lat, lon, radius, "linestring")
+
         # order_by
-        order_by_and_limit_query = sql.SQL(
+        order_by_and_limit_query_geom = sql.SQL(
                 """
                 ORDER BY ST_Distance(geom::geography, 'POINT({p_lon} {p_lat})'::geography)
+                LIMIT {p_number_of_results}
+                """
+                ).format(
+                        p_lon=sql.Placeholder(name='lon'),
+                        p_lat=sql.Placeholder(name='lat'),
+                        p_number_of_results=sql.Placeholder(name='number_of_results'))
+        order_by_and_limit_query_linestring = sql.SQL(
+                """
+                ORDER BY ST_Distance(linestring::geography, 'POINT({p_lon} {p_lat})'::geography)
                 LIMIT {p_number_of_results}
                 """
                 ).format(
@@ -171,7 +190,7 @@ class POI:
         if [True for tag in tag_list if tag in intersection_tag_list]:
             t1 = time.time()
             where_clause_query_list = \
-                    [ boundary_box_query, access_exclude_private ]
+                    [ boundary_box_query_geom, access_exclude_private ]
 
             # search
             if search:
@@ -263,9 +282,9 @@ class POI:
                         ).format(
                                 i_intersections=sql.Identifier(
                                     Config().database.get("intersection_table")),
-                                c_boundary_box_query=geometry.get_boundary_box_query("i"),
+                                c_boundary_box_query=geometry.get_boundary_box_query("i.geom"),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                c_order_by_and_limit_query=order_by_and_limit_query),
+                                c_order_by_and_limit_query=order_by_and_limit_query_geom),
                     where_clause_param_dict)
             t2 = time.time()
 
@@ -291,7 +310,7 @@ class POI:
         if [True for tag in tag_list if tag in station_tag_list]:
             t1 = time.time()
             where_clause_query_list = \
-                    [ boundary_box_query, access_exclude_private ]
+                    [ boundary_box_query_geom, access_exclude_private ]
 
             # tags
             tag_query_list = []
@@ -357,7 +376,7 @@ class POI:
                         ).format(
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                c_order_by_and_limit_query=order_by_and_limit_query),
+                                c_order_by_and_limit_query=order_by_and_limit_query_geom),
                     # double number of results limit to counter redundant stations
                     { **where_clause_param_dict, "number_of_results" : number_of_results*2 })
             t2 = time.time()
@@ -368,8 +387,9 @@ class POI:
                 outer_building_id = int(row['outer_building_id'])
                 station_tags = self.parse_hstore_column(row['tags'])
                 if "name" not in station_tags:
-                    # a station without a name is not very usefull
-                    continue
+                    # also include stations without name because in some regions the majority of
+                    # them comes without a name
+                    logging.warning(f"station with osm_id {osm_id} has no name")
 
                 # filter possible duplicates of bus and tram stops
                 if station_tags.get("public_transport") != "stop_position" \
@@ -398,7 +418,7 @@ class POI:
                         # the station already is represented by another one with
                         # a stop position, so skip this one
                         logging.debug("station with id {} ({}) already exists with a stop position, skip"
-                                .format(station_id, station_tags.get("name")))
+                                .format(station_id, station_tags.get("name", "Unnamed station")))
                         continue
 
                 station = self.create_station(station_id, osm_id, row['lat'], row['lon'], station_tags, outer_building_id,
@@ -418,11 +438,11 @@ class POI:
         poi_tag_list = ["transport_airport_ferry_aerialway", "transport_taxi",
                 "food", "accommodation", "entertainment", "tourism", "finance", "shop", "education",
                 "health", "elevator", "sanitary", "public_service", "other_service", "all_buildings_with_name",
-                "post_box", "surveillance", "bench", "trash", "bridge", "sport"]
+                "post_box", "surveillance", "bench", "trash", "barrier", "bridge", "sport", "entrance_without_name"]
         if [True for tag in tag_list if tag in poi_tag_list]:
             t1 = time.time()
             where_clause_query_list = \
-                    [ boundary_box_query, access_exclude_private ]
+                    [ boundary_box_query_geom, access_exclude_private ]
 
             # tags
             tag_query_list = []
@@ -623,6 +643,24 @@ class POI:
                                 """
                                 tags->'man_made' = 'surveillance'
                                 """))
+                if t == "barrier":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'barrier' = ANY(
+                                    '{"bar", "block", "bollard", "planter", "chain",
+                                      "cattle_grid", "cycle_barrier", "motorcycle_barrier",
+                                      "kissing_gate", "lift_gate", "sliding_beam",
+                                      "sliding_gate", "swing_gate",
+                                      "stile", "horse_stile", "turnstile", "full-height_turnstile"}')
+                                """))
+                if t == "entrance_without_name":
+                    tag_query_list.append(
+                            sql.SQL(
+                                """
+                                tags->'barrier' = ANY(
+                                    '{"entrance", "gate", "wicket_gate"}')
+                                """))
                 if t == "bridge":
                     tag_query_list.append(
                             sql.SQL(
@@ -662,7 +700,7 @@ class POI:
                         ).format(
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                c_order_by_and_limit_query=order_by_and_limit_query),
+                                c_order_by_and_limit_query=order_by_and_limit_query_geom),
                     where_clause_param_dict)
             t2 = time.time()
 
@@ -681,6 +719,131 @@ class POI:
             logging.debug("poi gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
 
 
+        #######################
+        # stairs and escalators
+        #######################
+        if "stairs_escalators" in tag_list:
+            t1 = time.time()
+            where_clause_query_list = \
+                    [ boundary_box_query_linestring, access_exclude_private ]
+
+            table_name = "ways"
+            result = self.selected_db.fetch_all(
+                    sql.SQL(
+                        """
+                        WITH closest_stairs AS (
+                            SELECT * FROM {i_table_name}
+                            WHERE {c_where_clause_query}
+                                AND (
+                                       (tags->'highway' = 'steps' AND tags->'incline' = ANY(ARRAY['up', 'down']))
+                                    OR (tags->'highway' = 'footway' and tags ? 'conveying')
+                                )
+                            {c_order_by_and_limit_query}
+                        )
+                        SELECT cs.id as way_id, cs.tags AS tags, fn.first_node_id, ln.last_node_id
+                        FROM closest_stairs cs
+                        LEFT JOIN LATERAL (
+                            SELECT n.id AS first_node_id
+                            FROM way_nodes wn
+                            JOIN nodes n ON n.id = wn.node_id
+                            WHERE wn.way_id = cs.id AND wn.sequence_id = 0
+                        ) fn ON true
+                        LEFT JOIN LATERAL (
+                            SELECT n.id AS last_node_id
+                            FROM way_nodes wn
+                            JOIN nodes n ON n.id = wn.node_id
+                            WHERE wn.way_id = cs.id
+                            ORDER BY wn.sequence_id DESC
+                            LIMIT 1
+                        ) ln ON true
+                        """
+                        ).format(
+                                i_table_name=sql.Identifier(table_name),
+                                c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
+                                c_order_by_and_limit_query=order_by_and_limit_query_linestring),
+                    where_clause_param_dict)
+            t2 = time.time()
+
+            node_map = dict()
+            for row in result:
+                way_tags = self.parse_hstore_column(row['tags'])
+                incline = way_tags.get("incline", "")
+                conveying = way_tags.get("conveying", "")
+                stair_type = self.translator.translate(
+                        "stairs_escalators", "escalator" if conveying else "stair_landing")
+
+                first_node = self.create_way_point_by_id(row['first_node_id'])
+                add_first_node = True
+                last_node = self.create_way_point_by_id(row['last_node_id'])
+                add_last_node = True
+
+                # format start and end node names
+
+                if   incline == "up":
+                    first_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'bottom')}"
+                    last_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'top')}"
+                elif incline == "down":
+                    first_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'top')}"
+                    last_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'bottom')}"
+                else:
+                    first_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'start')}"
+                    last_node['name'] = f"{stair_type}, {self.translator.translate('stairs_escalators', 'end')}"
+
+                if   conveying == "forward":
+                    add_last_node = False
+                    if     incline == "up":
+                        first_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_bottom_up')}"
+                    elif   incline == "down":
+                        first_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_top_down')}"
+                    else:
+                        first_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_in_direction_travel')}"
+                elif conveying == "backward":
+                    add_first_node = False
+                    if     incline == "up":
+                        last_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_top_down')}"
+                    elif   incline == "down":
+                        last_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_bottom_up')}"
+                    else:
+                        last_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_opposite_direction_travel')}"
+                elif conveying in ["yes", "reversible"]:
+                    first_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_unknown')}"
+                    last_node['name'] += f",\n{self.translator.translate('stairs_escalators', 'conveying_unknown')}"
+
+                if "step_count" in way_tags:
+                    step_count_string = f"{way_tags['step_count']} {self.translator.translate('stairs_escalators', 'steps')}"
+                    first_node['name'] += f",\n{step_count_string}"
+                    last_node['name'] += f",\n{step_count_string}"
+
+                if "level" in way_tags:
+                    level_string = f"{self.translator.translate('level', 'label')}: " \
+                            f"{self.format_level_attribute(way_tags['level'])}"
+                    first_node['name'] += f",\n{level_string}"
+                    last_node['name'] += f",\n{level_string}"
+
+                # duplicate detection
+                if row['first_node_id'] in node_map:
+                    add_first_node = False
+                    logging.warning(f"first node id {row['first_node_id']} already there.\n{first_node['name']} vs. {node_map[row['first_node_id']]['name']}")
+                if row['last_node_id'] in node_map:
+                    add_last_node = False
+                    logging.warning(f"last node id {row['last_node_id']} already there.\n{last_node['name']} vs. {node_map[row['last_node_id']]['name']}")
+
+                # add to poi list
+                if add_first_node:
+                    poi_list = self.insert_into_poi_list(poi_list, first_node, lat, lon)
+                    node_map[row['first_node_id']] = first_node
+                if add_last_node:
+                    poi_list = self.insert_into_poi_list(poi_list, last_node, lat, lon)
+                    node_map[row['last_node_id']] = last_node
+
+                # check for cancel command
+                if Config().has_session_id_to_remove(self.session_id):
+                    raise WebserverException(
+                            ReturnCode.CANCELLED_BY_CLIENT, "Cancelled by client")
+            t3 = time.time()
+            logging.debug("stairs_escalators gesamt = %.2f, dbquery = %.2f, parsing = %.2f" % ((t3-t1), (t2-t1), (t3-t2)))
+
+
         ###########
         # entrances
         ###########
@@ -688,7 +851,7 @@ class POI:
         if [True for tag in tag_list if tag in entrance_tag_list]:
             t1 = time.time()
             where_clause_query_list = \
-                    [ boundary_box_query, access_exclude_private ]
+                    [ boundary_box_query_geom, access_exclude_private ]
 
             # search
             if search:
@@ -713,7 +876,7 @@ class POI:
                         ).format(
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                c_order_by_and_limit_query=order_by_and_limit_query),
+                                c_order_by_and_limit_query=order_by_and_limit_query_geom),
                     # multiply number of results limit to counter many entrances without name
                     { **where_clause_param_dict, "number_of_results" : number_of_results*4 })
             t2 = time.time()
@@ -743,7 +906,7 @@ class POI:
         if "pedestrian_crossings" in tag_list:
             t1 = time.time()
             where_clause_query_list = \
-                    [ boundary_box_query, access_exclude_private ]
+                    [ boundary_box_query_geom, access_exclude_private ]
 
             # search
             if search:
@@ -768,7 +931,7 @@ class POI:
                         ).format(
                                 i_table_name=sql.Identifier(table_name),
                                 c_where_clause_query=sql.SQL(" AND ").join(where_clause_query_list),
-                                c_order_by_and_limit_query=order_by_and_limit_query),
+                                c_order_by_and_limit_query=order_by_and_limit_query_geom),
                     where_clause_param_dict)
             t2 = time.time()
 
@@ -1430,66 +1593,71 @@ class POI:
         # type and subtype
         poi['type'] = "poi"
         poi['sub_type'] = ""
+        sub_type_list = list()
 
+        if "aeroway" in tags:
+            sub_type_list.append(self.translator.translate("aeroway", tags['aeroway']))
+        if "highway" in tags and tags['highway'] == "elevator":
+            sub_type_list.append(self.translator.translate("highway", "elevator"))
         if "amenity" in tags:
             if "cuisine" in tags:
                 translated_cuisines = self.split_string_by_delimiter_translate_and_return_as_list(
                         tags['cuisine'], "cuisine", ";")
-                poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
-                                               ', '.join(translated_cuisines))
+                sub_type_list.append("%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
+                                               ', '.join(translated_cuisines)))
             elif "shelter_type" in tags:
-                poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
-                        self.translator.translate("shelter_type", tags['shelter_type']))
+                sub_type_list.append("%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
+                        self.translator.translate("shelter_type", tags['shelter_type'])))
             elif "vending" in tags:
-                poi['sub_type'] = "%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
-                        self.translator.translate("vending", tags['vending']))
+                translated_vendings = self.split_string_by_delimiter_translate_and_return_as_list(
+                        tags['vending'], "vending", ";")
+                sub_type_list.append("%s (%s)" % (self.translator.translate("amenity", tags['amenity']),
+                                               ', '.join(translated_vendings)))
             else:
-                poi['sub_type'] = self.translator.translate("amenity", tags['amenity'])
-
-        elif "bridge" in tags:
-            poi['sub_type'] = self.translator.translate("bridge", tags['bridge'])
-        elif "tourism" in tags:
+                sub_type_list.append(self.translator.translate("amenity", tags['amenity']))
+        if "shop" in tags:
+            sub_type_list.append(self.translator.translate("shop", tags['shop']))
+        if "tourism" in tags:
             if tags['tourism'] in ["artwork", "information"] \
                     and "information" in tags:
-                poi['sub_type'] = self.translator.translate("tourism:information", tags['information'])
+                sub_type_list.append(self.translator.translate("tourism:information", tags['information']))
             else:
-                poi['sub_type'] = self.translator.translate("tourism", tags['tourism'])
-        elif "historic" in tags:
-            poi['sub_type'] = self.translator.translate("historic", tags['historic'])
-        elif "leisure" in tags:
+                sub_type_list.append(self.translator.translate("tourism", tags['tourism']))
+        if "healthcare" in tags:
+            if "healthcare:speciality" in tags \
+                    and tags['healthcare:speciality'].lower() != "general":
+                sub_type_list.append("{} ({})".format(
+                        self.translator.translate("healthcare", tags['healthcare']),
+                        self.translator.translate("healthcare", tags['healthcare:speciality'])))
+            else:
+                sub_type_list.append(self.translator.translate("healthcare", tags['healthcare']))
+        if "craft" in tags:
+            sub_type_list.append(self.translator.translate("craft", tags['craft']))
+        if "club" in tags:
+            sub_type_list.append(self.translator.translate("club", tags['club']))
+        if "office" in tags:
+            sub_type_list.append(self.translator.translate("office", tags['office']))
+        if "barrier" in tags:
+            sub_type_list.append(self.translator.translate("barrier", tags['barrier']))
+        if "bridge" in tags:
+            sub_type_list.append(self.translator.translate("bridge", tags['bridge']))
+        if "leisure" in tags:
             if "sport" in tags:
                 translated_sports = self.split_string_by_delimiter_translate_and_return_as_list(
                         tags['sport'], "sport", ";")
-                poi['sub_type'] = "%s (%s)" % (self.translator.translate("leisure", tags['leisure']),
-                                               ', '.join(translated_sports))
+                sub_type_list.append("%s (%s)" % (self.translator.translate("leisure", tags['leisure']),
+                                               ', '.join(translated_sports)))
             else:
-                poi['sub_type'] = self.translator.translate("leisure", tags['leisure'])
-        elif "man_made" in tags:
-            poi['sub_type'] = self.translator.translate("man_made", tags['man_made'])
-        elif "natural" in tags:
-            poi['sub_type'] = self.translator.translate("natural", tags['natural'])
+                sub_type_list.append(self.translator.translate("leisure", tags['leisure']))
+        if "historic" in tags:
+            sub_type_list.append(self.translator.translate("historic", tags['historic']))
+        if "man_made" in tags:
+            sub_type_list.append(self.translator.translate("man_made", tags['man_made']))
+        if "natural" in tags:
+            sub_type_list.append(self.translator.translate("natural", tags['natural']))
 
-        elif "healthcare" in tags:
-            if "healthcare:speciality" in tags \
-                    and tags['healthcare:speciality'].lower() != "general":
-                poi['sub_type'] = "{} ({})".format(
-                        self.translator.translate("healthcare", tags['healthcare']),
-                        self.translator.translate("healthcare", tags['healthcare:speciality']))
-            else:
-                poi['sub_type'] = self.translator.translate("healthcare", tags['healthcare'])
-        elif "craft" in tags:
-            poi['sub_type'] = self.translator.translate("craft", tags['craft'])
-        elif "club" in tags:
-            poi['sub_type'] = self.translator.translate("club", tags['club'])
-        elif "office" in tags:
-            poi['sub_type'] = self.translator.translate("office", tags['office'])
-        elif "shop" in tags:
-            poi['sub_type'] = self.translator.translate("shop", tags['shop'])
-
-        elif "aeroway" in tags:
-            poi['sub_type'] = self.translator.translate("aeroway", tags['aeroway'])
-        elif "highway" in tags and tags['highway'] == "elevator":
-            poi['sub_type'] = self.translator.translate("highway", "elevator")
+        if sub_type_list:
+            poi['sub_type'] = '; '.join(sub_type_list[:2])
         elif "building" in tags:
             if tags['building'] == "yes":
                 poi['sub_type'] = self.translator.translate("building", "building")
@@ -1513,7 +1681,7 @@ class POI:
         else:
             poi['name'] = poi['sub_type']
 
-        # contact and opening hours
+        # contact data
         if "contact:website" in tags:
             poi['website'] = tags['contact:website']
         elif "website" in tags:
@@ -1526,8 +1694,18 @@ class POI:
             poi['phone'] = tags['contact:phone']
         elif "phone" in tags:
             poi['phone'] = tags['phone']
+
+        # opening hours and other amenity-specific attributes
         if "opening_hours" in tags:
             poi['opening_hours'] = tags['opening_hours']
+        if "check_date:opening_hours" in tags:
+            poi['opening_hours_last_checked'] = tags['check_date:opening_hours']
+        if "indoor_seating" in tags:
+            if   tags['indoor_seating'] == "yes": poi['indoor_seating'] = True
+            elif tags['indoor_seating'] == "no": poi['indoor_seating'] = False
+        if "outdoor_seating" in tags:
+            if   tags['outdoor_seating'] == "yes": poi['outdoor_seating'] = True
+            elif tags['outdoor_seating'] == "no": poi['outdoor_seating'] = False
 
         # for post office=post_partner only
         if "post_office" in tags and tags['post_office'] == "post_partner":
@@ -1542,7 +1720,7 @@ class POI:
 
         # level / floor
         if "level" in tags:
-            poi['level'] = tags['level']
+            poi['level'] = self.format_level_attribute(tags['level'])
 
         # outer building
         poi['is_inside'] = {}
@@ -1692,7 +1870,23 @@ class POI:
     # some helper functions
     #####
 
-    def get_boundary_box_query_and_params(self, lat, lon, radius):
+    def check_if_lat_lon_lays_within_selected_map_boundaries(self, lat, lon):
+        boundary_box_query, boundary_box_query_params = \
+                self.get_boundary_box_query_and_params(lat, lon, 1000, "geom")
+        try:
+            self.selected_db.fetch_one(
+                    sql.SQL(
+                        """
+                        SELECT * FROM {i_table_name} WHERE {c_boundary_box_query} LIMIT 1
+                        """
+                        ).format(
+                            i_table_name=sql.Identifier("nodes"),
+                            c_boundary_box_query=boundary_box_query),
+                        boundary_box_query_params)
+        except DBControl.DatabaseResultEmptyError as e:
+            raise WebserverException(ReturnCode.WRONG_MAP_SELECTED)
+
+    def get_boundary_box_query_and_params(self, lat, lon, radius, column_name="geom"):
         # check params
         try:
             if lat < -90 or lat > 90:
@@ -1730,8 +1924,9 @@ class POI:
                 raise WebserverException(
                         ReturnCode.BAD_REQUEST, "No radius")
 
-        # boundary box sql query
-        boundary_box_query = geometry.get_boundary_box_query()
+        # sql query
+        boundary_box_query = geometry.get_boundary_box_query(column_name)
+
         # params
         boundaries = geometry.get_boundary_box(lat, lon, radius)
         boundary_box_query_params = {
@@ -1740,22 +1935,7 @@ class POI:
                 'boundaries_right' : boundaries['right'],
                 'boundaries_top' : boundaries['top'] }
 
-        # lat/lon inside selected map?
-        try:
-            self.selected_db.fetch_one(
-                    sql.SQL(
-                        """
-                        SELECT * FROM {i_table_name} WHERE {c_boundary_box_query} LIMIT 1
-                        """
-                        ).format(
-                            i_table_name=sql.Identifier("nodes"),
-                            c_boundary_box_query=boundary_box_query),
-                        boundary_box_query_params)
-        except DBControl.DatabaseResultEmptyError as e:
-            raise WebserverException(ReturnCode.WRONG_MAP_SELECTED)
-
         return (boundary_box_query, boundary_box_query_params)
-
 
     def parse_hstore_column(self, hstore_string):
         hstore = dict()
@@ -1865,6 +2045,33 @@ class POI:
         return addr_dict
 
 
+    def format_level_attribute(self, level_strings):
+        formatted_level_list = list()
+
+        for level_string in level_strings.split(";"):
+            if not level_string: continue
+
+            try:
+                level = float(level_string)
+            except ValueError:
+                formatted_level_list.append(level_string)
+                continue
+
+            def format_float(value):
+                if value == int(value): return str(int(value))
+                return f"{value:.1f}"
+
+            if   level == 0:
+                formatted_level_list.append(self.translator.translate('level', 'ground_floor'))
+            elif level < 0:
+                formatted_level_list.append(
+                        f"{format_float(abs(level))} {self.translator.translate('level', 'basement_floor')}")
+            else:
+                formatted_level_list.append(
+                        f"{format_float(level)} {self.translator.translate('level', 'upper_floor')}")
+
+        return ', '.join(formatted_level_list)
+
     def split_string_by_delimiter_translate_and_return_as_list(
             self, string_value, category_name_for_translation, delimiter=";"):
         translated_items = list()
@@ -1896,6 +2103,4 @@ class POI:
             if inserted == False:
                 poi_list.append(entry)
         return poi_list
-
-
 

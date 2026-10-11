@@ -198,6 +198,7 @@ class RoutingWebService():
                     "Error in function get_poi", traceback.format_exc())
         else:
             result['poi'] = poi_list
+            #logging.info("Result, poi list: {}".format(json.dumps(poi_list, indent=4)))
         finally:
             Config().confirm_removement_of_session_id(session_id)
         return result
